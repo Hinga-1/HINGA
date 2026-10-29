@@ -1,0 +1,6 @@
+{
+  "name": "Neon Postgres App",
+  "description": "Programu iliyounganishwa na hifadhidata ya Neon Postgres",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

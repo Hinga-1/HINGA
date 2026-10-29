@@ -1,0 +1,169 @@
+import { neon } from '@neondatabase/serverless';
+import { MemoryEntry, MemorySearchFilter, MemoryStore, MemoryType } from '../types.ts';
+
+export class NeonMemoryStore implements MemoryStore {
+  private sql;
+  private sqlDirect;
+
+  constructor(databaseUrl: string, unpooledUrl?: string) {
+    this.sql = neon(databaseUrl);
+    this.sqlDirect = neon(unpooledUrl || databaseUrl);
+  }
+
+  /**
+   * Initializes the persistent memory table on Neon Postgres using direct connection
+   */
+  async initializeSchema(): Promise<void> {
+    await this.sqlDirect`
+      CREATE TABLE IF NOT EXISTS ai_memories (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        key TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INT NOT NULL DEFAULT 5,
+        tags TEXT[] NOT NULL DEFAULT '{}',
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+    await this.sqlDirect`
+      CREATE INDEX IF NOT EXISTS idx_ai_memories_type ON ai_memories(type)
+    `;
+    await this.sqlDirect`
+      CREATE INDEX IF NOT EXISTS idx_ai_memories_key ON ai_memories(key)
+    `;
+  }
+
+  async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry> {
+    const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+
+    const rows = await this.sql`
+      INSERT INTO ai_memories (id, type, key, content, importance, tags, metadata, created_at, updated_at)
+      VALUES (
+        ${id}, 
+        ${entry.type}, 
+        ${entry.key}, 
+        ${entry.content}, 
+        ${entry.importance}, 
+        ${entry.tags}, 
+        ${JSON.stringify(entry.metadata || {})}, 
+        ${now}, 
+        ${now}
+      )
+      RETURNING id, type, key, content, importance, tags, metadata, created_at, updated_at;
+    `;
+
+    const row = rows[0] as {
+      id: string;
+      type: string;
+      key: string;
+      content: string;
+      importance: number;
+      tags: string[];
+      metadata: Record<string, unknown>;
+      created_at: string;
+      updated_at: string;
+    };
+
+    return {
+      id: row.id,
+      type: row.type as MemoryType,
+      key: row.key,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async retrieve(id: string): Promise<MemoryEntry | null> {
+    const rows = await this.sql`
+      SELECT id, type, key, content, importance, tags, metadata, created_at, updated_at
+      FROM ai_memories
+      WHERE id = ${id}
+      LIMIT 1;
+    `;
+
+    if (!rows || rows.length === 0) return null;
+
+    const row = rows[0] as {
+      id: string;
+      type: string;
+      key: string;
+      content: string;
+      importance: number;
+      tags: string[];
+      metadata: Record<string, unknown>;
+      created_at: string;
+      updated_at: string;
+    };
+
+    return {
+      id: row.id,
+      type: row.type as MemoryType,
+      key: row.key,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async search(filter: MemorySearchFilter): Promise<MemoryEntry[]> {
+    let query = this.sql`
+      SELECT id, type, key, content, importance, tags, metadata, created_at, updated_at
+      FROM ai_memories
+      WHERE 1=1
+    `;
+
+    // Neon sql template handles basic queries, or filter in SQL:
+    const rows = await this.sql`
+      SELECT id, type, key, content, importance, tags, metadata, created_at, updated_at
+      FROM ai_memories
+      WHERE (${filter.type ?? null}::text IS NULL OR type = ${filter.type ?? null})
+        AND (${filter.query ?? null}::text IS NULL OR key ILIKE '%' || ${filter.query ?? ''} || '%' OR content ILIKE '%' || ${filter.query ?? ''} || '%')
+      ORDER BY importance DESC, created_at DESC
+      LIMIT ${filter.limit ?? 50};
+    `;
+
+    return rows.map((r: any) => ({
+      id: r.id,
+      type: r.type as MemoryType,
+      key: r.key,
+      content: r.content,
+      importance: r.importance,
+      tags: r.tags || [],
+      metadata: r.metadata,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.sql`
+      DELETE FROM ai_memories
+      WHERE id = ${id}
+      RETURNING id;
+    `;
+    return result.length > 0;
+  }
+
+  async clear(type?: MemoryType): Promise<void> {
+    if (type) {
+      await this.sql`DELETE FROM ai_memories WHERE type = ${type};`;
+    } else {
+      await this.sql`DELETE FROM ai_memories;`;
+    }
+  }
+
+  async count(): Promise<number> {
+    const rows = await this.sql`SELECT COUNT(*)::int as total FROM ai_memories;`;
+    return (rows[0] as { total: number }).total;
+  }
+}
