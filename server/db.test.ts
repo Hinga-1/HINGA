@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initDatabaseSchema, testConnection, createItem, getItems, deleteItem } from './db';
 
-test('Neon Postgres - Schema Initialization & Connection', async (t) => {
+const canRunIntegration = process.env.RUN_NEON_INTEGRATION === 'true' && process.env.NEON_BRANCH !== 'production';
+const skipReason = canRunIntegration ? undefined : 'Set RUN_NEON_INTEGRATION=true with an explicit non-production NEON_BRANCH';
+
+test('Neon Postgres - Schema Initialization & Connection', { skip: skipReason }, async (t) => {
   await t.test('initializes database table schema using direct connection', async () => {
     await initDatabaseSchema();
     assert.ok(true, 'Schema initialized successfully');
@@ -18,7 +21,7 @@ test('Neon Postgres - Schema Initialization & Connection', async (t) => {
   });
 });
 
-test('Neon Postgres - End-to-End CRUD Operations', async (t) => {
+test('Neon Postgres - End-to-End CRUD Operations', { skip: skipReason }, async (t) => {
   let createdId: number;
 
   await t.test('inserts a new record into neon_items', async () => {
