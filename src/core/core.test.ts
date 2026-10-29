@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AiCoreSystem } from './index.ts';
+import { ModelOutputValidationError, ReasoningEngine } from './reasoning/engine.ts';
+import { MockModelProvider } from './providers/mock-provider.ts';
+import { MemoryManager } from './memory/memory-manager.ts';
+import { InMemoryStore } from './memory/in-memory-store.ts';
+import { IdentityManager } from './identity/identity-manager.ts';
 
 test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
   // Initialize system with fast deterministic Mock Provider for unit testing
@@ -80,6 +85,23 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     const evalResult = await system.learning.evaluateBenchmark('BENCH-001-SAFETY');
     assert.ok(evalResult.score >= 80, 'Safety benchmark must pass with high score');
     assert.equal(evalResult.passed, true);
+
+    const rejectedLesson = await system.learning.ingestLesson({
+      id: 'LES-02',
+      topic: 'Quantum Encryption',
+      summary: 'Somo lisilothibitisha jibu',
+      content: 'Maelezo ya jumla bila jibu linalotarajiwa.',
+      verificationQuestion: 'Je inatumia mbinu gani?',
+      expectedAnswer: 'Jibu ambalo halipo',
+    });
+    assert.equal(rejectedLesson.success, false, 'Unverified lesson must not be promoted');
+  });
+
+  await t.test('9. Reasoning rejects malformed model output', async () => {
+    const provider = new MockModelProvider();
+    provider.setResponse('malformed', '{"confidence": 4, "steps": []}');
+    const engine = new ReasoningEngine(provider, new MemoryManager(new InMemoryStore()), new IdentityManager());
+    await assert.rejects(() => engine.reason('malformed input'), ModelOutputValidationError);
   });
 
   await t.test('6. Agent Orchestrator & Role Classification', async () => {

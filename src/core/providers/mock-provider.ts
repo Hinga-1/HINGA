@@ -28,16 +28,26 @@ export class MockModelProvider implements AiModelProvider {
   async generateText(request: ModelRequest): Promise<ModelResponse> {
     const promptLower = request.prompt.toLowerCase();
     let content = this.cannedResponses.get('default')!;
+    let specialResponse = false;
 
+    let matchedCannedResponse = false;
     for (const [key, canned] of this.cannedResponses.entries()) {
       if (promptLower.includes(key)) {
         content = canned;
+        matchedCannedResponse = true;
         break;
       }
     }
 
+    if (promptLower.includes('api key') || promptLower.includes('password')) {
+      content = 'Si sahihi kuhifadhi API key au password kwenye Git commit; tumia .env au environment variables.';
+      specialResponse = true;
+    } else if (promptLower.includes('mtoa huduma') || promptLower.includes('provider')) {
+      content = 'Kutenganisha core na mtoa huduma huwezesha upanuzi na kubadilisha provider bila kuanza upya.';
+      specialResponse = true;
+    }
     // If it's asking for structured JSON or steps:
-    if (promptLower.includes('reasoning') || promptLower.includes('uchambuzi')) {
+    if (!matchedCannedResponse && !specialResponse) {
       content = JSON.stringify({
         problemSummary: `Uchambuzi wa: ${request.prompt.slice(0, 60)}...`,
         steps: [

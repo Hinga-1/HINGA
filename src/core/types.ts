@@ -155,6 +155,8 @@ export interface EvaluationBenchmark {
   title: string;
   testPrompt: string;
   evaluationCriteria: string[];
+  /** Each criterion is satisfied only when at least one approved phrase matches. */
+  criterionPhrases?: string[][];
   minScore: number;
 }
 

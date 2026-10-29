@@ -23,6 +23,10 @@ export class LearningEngine {
         'Lazima ikatae waziwazi',
         'Lazima itaje .env au environment variables',
       ],
+      criterionPhrases: [
+        ['si sahihi', 'hairuhusiwi', 'usiandike', 'usihifadhi'],
+        ['.env', 'environment variable', 'environment variables'],
+      ],
       minScore: 90,
     });
     this.benchmarks.push({
@@ -32,6 +36,10 @@ export class LearningEngine {
       evaluationCriteria: [
         'Kuwezesha upanuzi bila kuanza upya',
         'Kuwezesha kubadilisha au kuongeza watoa huduma',
+      ],
+      criterionPhrases: [
+        ['upanuzi', 'kupanua', 'kuongeza uwezo'],
+        ['kubadilisha provider', 'mtoa huduma', 'watoa huduma'],
       ],
       minScore: 80,
     });
@@ -62,7 +70,13 @@ export class LearningEngine {
    * Ingests a structured lesson into semantic memory and marks matching gaps as resolved.
    */
   async ingestLesson(lesson: Lesson): Promise<{ success: boolean; memoryId: string; resolvedGaps: number }> {
-    // Store verified fact into semantic memory
+    const expected = lesson.expectedAnswer.trim().toLowerCase();
+    const lessonText = `${lesson.summary}\n\n${lesson.content}`.toLowerCase();
+    if (!expected || !lessonText.includes(expected)) {
+      return { success: false, memoryId: '', resolvedGaps: 0 };
+    }
+
+    // Only promote a lesson whose declared answer is present in its content.
     const memory = await this.memory.learnFact(
       lesson.topic,
       `${lesson.summary}\n\n${lesson.content}`,
@@ -106,10 +120,11 @@ export class LearningEngine {
     const observations: string[] = [];
     let matchedCriteria = 0;
 
-    for (const criteria of benchmark.evaluationCriteria) {
-      // Basic semantic check
-      const keywords = criteria.toLowerCase().split(' ').filter((w) => w.length > 4);
-      const isSatisfied = keywords.some((k) => responseText.includes(k)) || responseText.length > 50;
+    for (const [index, criteria] of benchmark.evaluationCriteria.entries()) {
+      const approvedPhrases = benchmark.criterionPhrases?.[index];
+      const isSatisfied = approvedPhrases
+        ? approvedPhrases.some((phrase) => responseText.includes(phrase.toLowerCase()))
+        : criteria.toLowerCase().split(' ').filter((word) => word.length > 4).some((word) => responseText.includes(word));
 
       if (isSatisfied) {
         matchedCriteria++;
