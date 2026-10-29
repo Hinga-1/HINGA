@@ -7,6 +7,11 @@ export class InMemoryStore implements MemoryStore {
   private entries: Map<string, MemoryEntry> = new Map();
 
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry> {
+    if (!['working', 'episodic', 'semantic'].includes(entry.type)) throw new Error('Memory type isiyo sahihi');
+    if (!Number.isInteger(entry.importance) || entry.importance < 1 || entry.importance > 10) {
+      throw new Error('Memory importance lazima iwe integer kati ya 1 na 10');
+    }
+    if (!entry.content.trim() || entry.content.length > 100_000) throw new Error('Memory content ina urefu usioruhusiwa');
     const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
     const newEntry: MemoryEntry = {
@@ -39,7 +44,7 @@ export class InMemoryStore implements MemoryStore {
       list = list.filter((e) => e.key.toLowerCase().includes(q) || e.content.toLowerCase().includes(q));
     }
 
-    list.sort((a, b) => b.importance - a.importance);
+    list.sort((a, b) => b.importance - a.importance || b.createdAt.localeCompare(a.createdAt));
 
     if (filter.limit && filter.limit > 0) {
       list = list.slice(0, filter.limit);

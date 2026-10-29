@@ -34,6 +34,11 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.ok(found.length > 0);
     assert.equal(found[0].key, 'Hexagonal Architecture');
 
+    await assert.rejects(() => system.memory.learnFact('Invalid', 'x', 11), /importance/);
+    const tagged = await system.memory.setWorkingContext('tagged', 'context');
+    const taggedResults = await system.memory.getWorkingContext();
+    assert.ok(taggedResults.some((entry) => entry.id === tagged.id));
+
     // Episodic Memory
     const episode = await system.memory.recordEpisode('Kazi ya jaribio', 'Matokeo mazuri', ['test']);
     assert.ok(episode.id.startsWith('mem_'));

@@ -36,6 +36,11 @@ export class NeonMemoryStore implements MemoryStore {
   }
 
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry> {
+    if (!['working', 'episodic', 'semantic'].includes(entry.type)) throw new Error('Memory type isiyo sahihi');
+    if (!Number.isInteger(entry.importance) || entry.importance < 1 || entry.importance > 10) {
+      throw new Error('Memory importance lazima iwe integer kati ya 1 na 10');
+    }
+    if (!entry.content.trim() || entry.content.length > 100_000) throw new Error('Memory content ina urefu usioruhusiwa');
     const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
 
@@ -116,18 +121,12 @@ export class NeonMemoryStore implements MemoryStore {
   }
 
   async search(filter: MemorySearchFilter): Promise<MemoryEntry[]> {
-    let query = this.sql`
-      SELECT id, type, key, content, importance, tags, metadata, created_at, updated_at
-      FROM ai_memories
-      WHERE 1=1
-    `;
-
-    // Neon sql template handles basic queries, or filter in SQL:
     const rows = await this.sql`
       SELECT id, type, key, content, importance, tags, metadata, created_at, updated_at
       FROM ai_memories
       WHERE (${filter.type ?? null}::text IS NULL OR type = ${filter.type ?? null})
         AND (${filter.query ?? null}::text IS NULL OR key ILIKE '%' || ${filter.query ?? ''} || '%' OR content ILIKE '%' || ${filter.query ?? ''} || '%')
+        AND (${filter.tags && filter.tags.length > 0 ? filter.tags : null}::text[] IS NULL OR tags && ${filter.tags && filter.tags.length > 0 ? filter.tags : []}::text[])
       ORDER BY importance DESC, created_at DESC
       LIMIT ${filter.limit ?? 50};
     `;

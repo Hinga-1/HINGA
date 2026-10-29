@@ -111,6 +111,9 @@ export class AiCoreSystem {
     }
 
     const system = new AiCoreSystem(provider, memoryStore, isNeon);
+    if (!isNeon && !options?.forceInMemory) {
+      system.observability.markDegraded('Neon persistence haikupatikana; in-memory fallback inatumika');
+    }
     system.observability.info('system', 'AiCoreSystem imezinduliwa rasmi', {
       provider: provider.name,
       isNeonConnected: isNeon,
