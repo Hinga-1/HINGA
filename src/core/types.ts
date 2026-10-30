@@ -16,6 +16,12 @@ export interface ModelResponse {
   model: string;
   usage?: TokenUsage;
   finishReason?: string;
+  latencyMs?: number;
+  fallback?: {
+    used: boolean;
+    providerId?: string;
+    reason?: string;
+  };
   metadata?: Record<string, unknown>;
 }
 
@@ -25,6 +31,9 @@ export interface ModelRequest {
   tier?: ModelTier;
   temperature?: number;
   maxTokens?: number;
+  requestId?: string;
+  deadlineAt?: number;
+  signal?: AbortSignal;
 }
 
 export interface AiModelProvider {
@@ -203,7 +212,28 @@ export interface ScheduledJob {
   nextRun: string;
   enabled: boolean;
   maxRetries: number;
-  task: () => Promise<void>;
+  task: (signal?: AbortSignal) => Promise<void>;
+}
+
+export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'timed_out';
+
+export interface JobRunRecord {
+  runId: string;
+  jobId: string;
+  idempotencyKey: string;
+  status: JobRunStatus;
+  attempt: number;
+  maxAttempts: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export interface JobRunStore {
+  findByIdempotencyKey(key: string): Promise<JobRunRecord | null>;
+  save(record: JobRunRecord): Promise<void>;
+  listRunning(): Promise<JobRunRecord[]>;
 }
 
 // ----------------------------------------------------

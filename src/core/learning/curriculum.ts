@@ -7,6 +7,7 @@ export class LearningEngine {
   private provider: AiModelProvider;
   private gaps: Map<string, KnowledgeGap> = new Map();
   private benchmarks: EvaluationBenchmark[] = [];
+  private candidates: Map<string, Lesson> = new Map();
 
   constructor(memory: MemoryManager, provider: AiModelProvider) {
     this.memory = memory;
@@ -69,20 +70,27 @@ export class LearningEngine {
   /**
    * Ingests a structured lesson into semantic memory and marks matching gaps as resolved.
    */
-  async ingestLesson(lesson: Lesson): Promise<{ success: boolean; memoryId: string; resolvedGaps: number }> {
+  async ingestLesson(lesson: Lesson): Promise<{ success: boolean; status: 'candidate' | 'rejected'; memoryId: string; resolvedGaps: number }> {
+    const requiredFields = [lesson.id, lesson.topic, lesson.summary, lesson.content, lesson.verificationQuestion, lesson.expectedAnswer];
+    if (requiredFields.some((field) => typeof field !== 'string' || !field.trim())) {
+      return { success: false, status: 'rejected', memoryId: '', resolvedGaps: 0 };
+    }
     const expected = lesson.expectedAnswer.trim().toLowerCase();
     const lessonText = `${lesson.summary}\n\n${lesson.content}`.toLowerCase();
     if (!expected || !lessonText.includes(expected)) {
-      return { success: false, memoryId: '', resolvedGaps: 0 };
+      return { success: false, status: 'rejected', memoryId: '', resolvedGaps: 0 };
     }
 
-    // Only promote a lesson whose declared answer is present in its content.
-    const memory = await this.memory.learnFact(
-      lesson.topic,
-      `${lesson.summary}\n\n${lesson.content}`,
-      9,
-      ['lesson', 'verified_learning']
-    );
+    // Candidate validation is not approval. Promotion requires an explicit call to approveLesson.
+    this.candidates.set(lesson.id, { ...lesson });
+    return { success: true, status: 'candidate', memoryId: '', resolvedGaps: 0 };
+  }
+
+  async approveLesson(lessonId: string): Promise<{ success: boolean; status: 'approved' | 'missing'; memoryId: string; resolvedGaps: number }> {
+    const lesson = this.candidates.get(lessonId);
+    if (!lesson) return { success: false, status: 'missing', memoryId: '', resolvedGaps: 0 };
+
+    const memory = await this.memory.learnFact(lesson.topic, `${lesson.summary}\n\n${lesson.content}`, 9, ['lesson', 'verified_learning']);
 
     // Resolve matching gaps
     let resolvedCount = 0;
@@ -94,11 +102,12 @@ export class LearningEngine {
       }
     }
 
-    return {
-      success: true,
-      memoryId: memory.id,
-      resolvedGaps: resolvedCount,
-    };
+    this.candidates.delete(lessonId);
+    return { success: true, status: 'approved', memoryId: memory.id, resolvedGaps: resolvedCount };
+  }
+
+  getPendingLessons(): Lesson[] {
+    return Array.from(this.candidates.values()).map((lesson) => ({ ...lesson }));
   }
 
   /**

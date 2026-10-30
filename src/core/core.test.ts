@@ -84,7 +84,11 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
       expectedAnswer: 'Lattice-based cryptography',
     });
     assert.equal(lessonResult.success, true);
-    assert.ok(lessonResult.resolvedGaps >= 1, 'Matching knowledge gap should be auto-resolved');
+    assert.equal(lessonResult.status, 'candidate');
+    assert.equal(lessonResult.resolvedGaps, 0, 'Candidate must not resolve a gap before approval');
+    const approval = await system.learning.approveLesson('LES-01');
+    assert.equal(approval.status, 'approved');
+    assert.ok(approval.resolvedGaps >= 1, 'Approved lesson should resolve the matching gap');
 
     // Benchmark Evaluation
     const evalResult = await system.learning.evaluateBenchmark('BENCH-001-SAFETY');

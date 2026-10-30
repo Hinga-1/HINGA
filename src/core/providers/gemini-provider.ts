@@ -31,9 +31,15 @@ export class GeminiModelProvider implements AiModelProvider {
   }
 
   async generateText(request: ModelRequest): Promise<ModelResponse> {
+    const startedAt = Date.now();
     // If circuit breaker is tripped due to recent network failure, fail fast to fallback
     if (Date.now() < this.circuitBreakerTrippedUntil || !this.ai) {
-      return this.fallbackProvider.generateText(request);
+      const fallback = await this.fallbackProvider.generateText(request);
+      return {
+        ...fallback,
+        latencyMs: Date.now() - startedAt,
+        fallback: { used: true, providerId: this.id, reason: this.ai ? 'circuit_open' : 'provider_unavailable' },
+      };
     }
 
     try {
@@ -58,6 +64,8 @@ export class GeminiModelProvider implements AiModelProvider {
       return {
         content: response.text || '',
         model: modelName,
+        latencyMs: Date.now() - startedAt,
+        fallback: { used: false },
         usage: {
           promptTokens: response.usageMetadata?.promptTokenCount || 0,
           completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
@@ -71,7 +79,12 @@ export class GeminiModelProvider implements AiModelProvider {
       // Trip circuit breaker for 60 seconds to provide instant failover on subsequent requests
       this.circuitBreakerTrippedUntil = Date.now() + 60000;
       console.warn('⚠️ Gemini API haikupatikana (Circuit Breaker Activated):', (err as Error).message);
-      return this.fallbackProvider.generateText(request);
+      const fallback = await this.fallbackProvider.generateText(request);
+      return {
+        ...fallback,
+        latencyMs: Date.now() - startedAt,
+        fallback: { used: true, providerId: this.id, reason: 'provider_error' },
+      };
     }
   }
 }
