@@ -177,3 +177,22 @@ test('AutomationEngine reconciles runs interrupted by worker restart', async () 
   assert.ok(reconciled?.completedAt);
   assert.equal(await engine.reconcileInterruptedRuns(), 0);
 });
+
+test('reconciliation does not overwrite a run that another worker already completed', async () => {
+  const store = new InMemoryJobRunStore();
+  await store.save({
+    runId: 'run-race', jobId: 'job-race', idempotencyKey: 'key-race',
+    status: 'running', attempt: 1, maxAttempts: 1,
+    createdAt: new Date().toISOString(), startedAt: new Date().toISOString(),
+  });
+  const engine = new AutomationEngine({ runStore: store });
+  const listed = await store.listRunning();
+  await store.save({
+    ...listed[0], status: 'succeeded', completedAt: new Date().toISOString(), error: undefined,
+  });
+
+  assert.equal(await engine.reconcileInterruptedRuns(), 0);
+  const completed = await store.findByIdempotencyKey('key-race');
+  assert.equal(completed?.status, 'succeeded');
+  assert.notEqual(completed?.error, 'worker_restarted');
+});

@@ -44,6 +44,16 @@ export class NeonJobRunStore implements JobRunStore {
     return rows.length > 0;
   }
 
+  async failIfRunning(runId: string, completedAt: string, error: string): Promise<boolean> {
+    const rows = await this.sql`
+      UPDATE ai_job_runs
+      SET status = 'failed', completed_at = ${completedAt}, error_code = ${error}
+      WHERE run_id = ${runId} AND status = 'running'
+      RETURNING run_id;
+    `;
+    return rows.length > 0;
+  }
+
   async save(record: JobRunRecord): Promise<void> {
     await this.sql`
       INSERT INTO ai_job_runs

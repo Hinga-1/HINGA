@@ -255,6 +255,8 @@ export interface JobRunStore {
   claim(record: JobRunRecord): Promise<boolean>;
   /** Atomically transitions an eligible run into one executing attempt. */
   beginAttempt(runId: string, attempt: number, startedAt: string): Promise<boolean>;
+  /** Atomically marks a run failed only while it is still running. */
+  failIfRunning(runId: string, completedAt: string, error: string): Promise<boolean>;
   save(record: JobRunRecord): Promise<void>;
   listRunning(): Promise<JobRunRecord[]>;
 }

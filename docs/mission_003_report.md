@@ -345,3 +345,21 @@ Matokeo halisi ya verification ya checkpoint hii:
 - Neon connector read-only query kwenye `br-twilight-paper-b9hyxb1y` — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`, `public.ai_job_runs` na `public.schema_migrations` zilikuwepo.
 
 Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Hakuna secret iliyochapishwa, kuhamishwa au kuandikwa kwenye repository/report. Kazi inayofuata salama ni lease/worker-ownership contract iliyo na expiry/heartbeat, au roles/RLS baada ya idhini ya wazi ya mtumiaji; roles/grants/RLS bado ni blocker ya playbook.
+
+
+## Uthibitisho wa execution ya 2026-10-30 — atomic startup reconciliation guard
+
+Katika execution hii nilikagua PR #1 ikiwa wazi, branch `mission-003-independent-work` ikiwa remote, na Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ikiwa `ready`. Production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kuongeza `JobRunStore.failIfRunning(runId, completedAt, error)`, compare-and-set inayobadilisha run kuwa `failed` tu ikiwa bado iko `running`. `InMemoryJobRunStore` na `FileJobRunStore` zimeongezwa implementation; `NeonJobRunStore` inatumia `UPDATE ... WHERE status = 'running' RETURNING` kwenye schema iliyopo. `AutomationEngine.reconcileInterruptedRuns()` sasa huhesabu mabadiliko yaliyofanikiwa tu na haiwezi ku-overwrite run ambayo worker mwingine tayari amekamilisha. Regression test inathibitisha race hii. Hakuna migration, DDL, role, grant, RLS, production SQL au model call iliyofanywa.
+
+Matokeo halisi ya verification:
+- `npm ci` — **passed** kutoka `package-lock.json`; npm iliripoti vulnerability moja ya kiwango cha chini, bila kubadilisha lockfile.
+- `npm test` — **23 passed, 0 failed, 2 skipped**. Skips zilikuwa Neon repository integrations kwa sababu `DATABASE_URL` haikuwekwa kwenye shell.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; warning ya Vite kuhusu `__dirname`/`configLoader: native` haikuzuia build.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- `git diff --check` — **passed**.
+- Safe Neon read-only query kwenye `br-twilight-paper-b9hyxb1y` — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_table=ai_job_runs`, `job_runs_count=0`.
+
+Integration test ya moja kwa moja dhidi ya Neon haikuendeshwa kwa sababu connection configuration ya test branch haipo kwenye shell hii; hakuna secret iliyoundwa, kuhamishwa, kuchapishwa au kuandikwa kwenye repository/report. Hatari zilizosalia: lease/heartbeat na stale-run expiry bado hazipo, hivyo hii ni CAS guard tu na si distributed exactly-once side-effect guarantee; runtime/migration roles na RLS bado ni blocker inayohitaji idhini ya wazi ya mtumiaji. Hakuna merge ya `main` iliyofanywa.

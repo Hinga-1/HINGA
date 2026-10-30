@@ -28,6 +28,15 @@ export class InMemoryJobRunStore implements JobRunStore {
     return true;
   }
 
+  async failIfRunning(runId: string, completedAt: string, error: string): Promise<boolean> {
+    const record = this.records.get(runId);
+    if (!record || record.status !== 'running') return false;
+    record.status = 'failed';
+    record.completedAt = completedAt;
+    record.error = error;
+    return true;
+  }
+
   async save(record: JobRunRecord): Promise<void> {
     this.records.set(record.runId, { ...record });
   }
@@ -81,6 +90,13 @@ export class FileJobRunStore extends InMemoryJobRunStore {
     const begun = await super.beginAttempt(runId, attempt, startedAt);
     if (begun) await this.flush();
     return begun;
+  }
+
+  override async failIfRunning(runId: string, completedAt: string, error: string): Promise<boolean> {
+    await this.ensureLoaded();
+    const failed = await super.failIfRunning(runId, completedAt, error);
+    if (failed) await this.flush();
+    return failed;
   }
 
   override async save(record: JobRunRecord): Promise<void> {
@@ -175,15 +191,11 @@ export class AutomationEngine {
   async reconcileInterruptedRuns(): Promise<number> {
     const interrupted = await this.runStore.listRunning();
     const completedAt = new Date().toISOString();
+    let reconciled = 0;
     for (const run of interrupted) {
-      await this.runStore.save({
-        ...run,
-        status: 'failed',
-        completedAt,
-        error: 'worker_restarted',
-      });
+      if (await this.runStore.failIfRunning(run.runId, completedAt, 'worker_restarted')) reconciled++;
     }
-    return interrupted.length;
+    return reconciled;
   }
 
   async runJobNow(id: string, idempotencyKey = `manual:${id}:${Date.now()}`): Promise<boolean> {
