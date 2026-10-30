@@ -92,6 +92,23 @@ test('lease heartbeat renews ownership but only for the owning worker', async ()
   assert.equal(await ledger.releaseLease(leaseKey, 'worker-a', 'done'), true);
 });
 
+test('lease boundaries reject malformed identities and non-positive TTLs', async () => {
+  const ledger = new InMemoryExecutionLedger();
+  await assert.rejects(
+    ledger.acquireLease({ leaseKey: '', workerId: 'worker-a', executionId: 'exec-a', ttlMs: 1_000 }),
+    /identity fields must be non-empty/,
+  );
+  await assert.rejects(
+    ledger.acquireLease({ leaseKey: 'lease', workerId: 'worker-a', executionId: 'exec-a', ttlMs: 0 }),
+    /TTL must be a positive finite number/,
+  );
+  await ledger.acquireLease({ leaseKey: 'lease', workerId: 'worker-a', executionId: 'exec-a', ttlMs: 1_000 });
+  await assert.rejects(
+    ledger.heartbeatLease('lease', 'worker-a', Number.NaN),
+    /TTL must be a positive finite number/,
+  );
+});
+
 test('stale running execution is detected so recovery can proceed', () => {
   const now = new Date('2026-10-30T22:00:00.000Z');
   const fresh = baseExecution({

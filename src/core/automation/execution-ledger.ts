@@ -309,6 +309,23 @@ export interface LeaseRequest {
   ttlMs: number;
 }
 
+function validateLeaseIdentity(leaseKey: string, workerId: string, executionId: string): void {
+  if (!leaseKey.trim() || !workerId.trim() || !executionId.trim()) {
+    throw new Error('Lease identity fields must be non-empty');
+  }
+}
+
+function validateLeaseTtl(ttlMs: number): void {
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+    throw new Error('Lease TTL must be a positive finite number');
+  }
+}
+
+function validateLeaseRequest(request: LeaseRequest): void {
+  validateLeaseIdentity(request.leaseKey, request.workerId, request.executionId);
+  validateLeaseTtl(request.ttlMs);
+}
+
 export interface ExecutionLedger {
   acquireLease(request: LeaseRequest): Promise<LeaseRecord | null>;
   getLease(leaseKey: string): Promise<LeaseRecord | undefined>;
@@ -330,6 +347,7 @@ export class InMemoryExecutionLedger implements ExecutionLedger {
   private readonly leases = new Map<string, LeaseRecord>();
 
   async acquireLease(request: LeaseRequest): Promise<LeaseRecord | null> {
+    validateLeaseRequest(request);
     const now = new Date();
     const existing = this.leases.get(request.leaseKey);
     if (existing && !existing.releasedAt && new Date(existing.expiresAt).getTime() > now.getTime()) {
@@ -353,6 +371,8 @@ export class InMemoryExecutionLedger implements ExecutionLedger {
   }
 
   async heartbeatLease(leaseKey: string, workerId: string, ttlMs: number): Promise<boolean> {
+    validateLeaseIdentity(leaseKey, workerId, 'lease-heartbeat');
+    validateLeaseTtl(ttlMs);
     const lease = this.leases.get(leaseKey);
     if (!lease || lease.releasedAt || lease.workerId !== workerId) return false;
     const now = new Date();
@@ -433,6 +453,7 @@ export class NeonExecutionLedger implements ExecutionLedger {
   ) {}
 
   async acquireLease(request: LeaseRequest): Promise<LeaseRecord | null> {
+    validateLeaseRequest(request);
     const rows = await this.client.query<LeaseRecord>(
       `INSERT INTO hinga_worker_leases (lease_key, worker_id, execution_id, heartbeat_at, expires_at)
        VALUES ($1, $2, $3, NOW(), NOW() + make_interval(secs => $4))
@@ -462,6 +483,8 @@ export class NeonExecutionLedger implements ExecutionLedger {
   }
 
   async heartbeatLease(leaseKey: string, workerId: string, ttlMs: number): Promise<boolean> {
+    validateLeaseIdentity(leaseKey, workerId, 'lease-heartbeat');
+    validateLeaseTtl(ttlMs);
     const rows = await this.client.query(
       `UPDATE hinga_worker_leases
           SET heartbeat_at = NOW(),
