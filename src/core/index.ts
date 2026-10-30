@@ -115,6 +115,14 @@ export class AiCoreSystem {
     }
 
     const system = new AiCoreSystem(provider, memoryStore, isNeon, automationRunStore);
+    if (isNeon) {
+      const reconciledRuns = await system.automation.reconcileInterruptedRuns();
+      if (reconciledRuns > 0) {
+        system.observability.warn('automation', 'Runs zilizoachwa running zimeshughulikiwa baada ya worker kuanza', {
+          reconciledRuns,
+        });
+      }
+    }
     if (!isNeon && !options?.forceInMemory) {
       system.observability.markDegraded('Neon persistence haikupatikana; in-memory fallback inatumika');
     }

@@ -290,3 +290,22 @@ Matokeo halisi ya verification:
 - Safe Neon read-only query kwenye `br-twilight-paper-b9hyxb1y` — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`, na `public.ai_job_runs` ipo.
 
 Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Hatari zilizosalia hazijabadilika: distributed worker leases/advisory locks, persistent job definitions, exactly-once side-effect boundaries, na runtime/migration roles pamoja na RLS bado hazijathibitishwa; roles/grants/RLS bado ni blocker inayohitaji idhini ya wazi.
+
+
+## Uthibitisho wa execution ya 2026-10-30 — startup reconciliation ya durable runs
+
+Katika execution hii nilikagua PR #1 ikiwa wazi na `MERGEABLE`, branch `mission-003-independent-work` ikiwa remote, na Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ikiwa `ready`. Production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kuunganisha `AutomationEngine.reconcileInterruptedRuns()` kwenye `AiCoreSystem.initialize()` baada ya Neon persistence kufanikiwa. Worker startup sasa huweka runs zilizobaki kwenye hali ya `running` kuwa `failed` kwa `worker_restarted` kabla ya mfumo kuendelea; ikiwa hakuna stale runs, hakuna write inayofanyika. Warning ya observability hutolewa tu kama kuna runs zilizoreconciled. In-memory fallback na force-in-memory initialization hazibadilishwa.
+
+Matokeo halisi ya verification:
+
+- `npm ci` — **passed** kutoka lockfile; npm iliripoti vulnerability moja ya kiwango cha chini, bila kubadilisha lockfile.
+- `npm test` — **19 passed, 0 failed, 2 skipped**. Skips zilikuwa Neon integration tests kwa sababu connection configuration ya test branch haikuwekwa kwenye shell; hakuna secret iliyochapishwa au kuhamishwa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite warning ya `__dirname`/`configLoader: native` haikuzuia build.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- `git diff --check` — **passed**.
+- Safe Neon read-only connector query kwenye `br-twilight-paper-b9hyxb1y` — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`, `public.ai_job_runs` ipo na `public.ai_memories` ipo.
+
+Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Hii inakamilisha worker-lifecycle reconciliation ya msingi, lakini si distributed lease/advisory-lock protocol wala exactly-once side-effect guarantee; workers wengi bado wanaweza kuhitaji ownership/lease contract kabla ya kudai distributed durability. Runtime/migration roles na RLS bado ni blocker ya policy inayohitaji idhini ya wazi ya mtumiaji.
