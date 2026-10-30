@@ -23,6 +23,18 @@ test('AutomationEngine records bounded retries and idempotent completion', async
   assert.equal(record?.attempt, 2);
 });
 
+test('JobRunStore atomically accepts only one duplicate idempotency claim', async () => {
+  const store = new InMemoryJobRunStore();
+  const first = {
+    runId: 'run-claim-1', jobId: 'job-claim', idempotencyKey: 'claim-key', status: 'pending' as const,
+    attempt: 0, maxAttempts: 1, createdAt: new Date().toISOString(),
+  };
+  const second = { ...first, runId: 'run-claim-2' };
+  const claims = await Promise.all([store.claim(first), store.claim(second)]);
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal((await store.findByIdempotencyKey('claim-key'))?.runId, 'run-claim-1');
+});
+
 test('AutomationEngine records the completion time on the scheduled job', async () => {
   const store = new InMemoryJobRunStore();
   const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });

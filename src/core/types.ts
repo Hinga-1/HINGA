@@ -251,6 +251,8 @@ export interface JobRunRecord {
 
 export interface JobRunStore {
   findByIdempotencyKey(key: string): Promise<JobRunRecord | null>;
+  /** Inserts a new run only when its idempotency key is not already claimed. */
+  claim(record: JobRunRecord): Promise<boolean>;
   save(record: JobRunRecord): Promise<void>;
   listRunning(): Promise<JobRunRecord[]>;
 }

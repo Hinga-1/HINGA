@@ -11,6 +11,12 @@ export class InMemoryJobRunStore implements JobRunStore {
     return Array.from(this.records.values()).find((record) => record.idempotencyKey === key) ?? null;
   }
 
+  async claim(record: JobRunRecord): Promise<boolean> {
+    if (Array.from(this.records.values()).some((existing) => existing.idempotencyKey === record.idempotencyKey)) return false;
+    this.records.set(record.runId, { ...record });
+    return true;
+  }
+
   async save(record: JobRunRecord): Promise<void> {
     this.records.set(record.runId, { ...record });
   }
@@ -50,6 +56,13 @@ export class FileJobRunStore extends InMemoryJobRunStore {
   override async findByIdempotencyKey(key: string): Promise<JobRunRecord | null> {
     await this.ensureLoaded();
     return super.findByIdempotencyKey(key);
+  }
+
+  override async claim(record: JobRunRecord): Promise<boolean> {
+    await this.ensureLoaded();
+    const claimed = await super.claim(record);
+    if (claimed) await this.flush();
+    return claimed;
   }
 
   override async save(record: JobRunRecord): Promise<void> {
@@ -163,7 +176,7 @@ export class AutomationEngine {
       const existing = await this.runStore.findByIdempotencyKey(idempotencyKey);
       if (existing?.status === 'succeeded') return true;
 
-      const run: JobRunRecord = existing ?? {
+      const candidate: JobRunRecord = existing ?? {
         runId: `run_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         jobId: id,
         idempotencyKey,
@@ -172,6 +185,11 @@ export class AutomationEngine {
         maxAttempts: job.maxRetries + 1,
         createdAt: new Date().toISOString(),
       };
+      const run = existing ?? (await this.runStore.claim(candidate) ? candidate : null);
+      if (!run) {
+        const claimed = await this.runStore.findByIdempotencyKey(idempotencyKey);
+        return claimed?.status === 'succeeded';
+      }
       for (let attempt = run.attempt + 1; attempt <= run.maxAttempts; attempt++) {
         run.attempt = attempt;
         run.status = 'running';

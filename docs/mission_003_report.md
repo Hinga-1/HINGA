@@ -309,3 +309,22 @@ Matokeo halisi ya verification:
 - Safe Neon read-only connector query kwenye `br-twilight-paper-b9hyxb1y` — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`, `public.ai_job_runs` ipo na `public.ai_memories` ipo.
 
 Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Hii inakamilisha worker-lifecycle reconciliation ya msingi, lakini si distributed lease/advisory-lock protocol wala exactly-once side-effect guarantee; workers wengi bado wanaweza kuhitaji ownership/lease contract kabla ya kudai distributed durability. Runtime/migration roles na RLS bado ni blocker ya policy inayohitaji idhini ya wazi ya mtumiaji.
+
+## Uthibitisho wa execution ya 2026-10-30 — atomic idempotency claim
+
+Katika execution hii nilikagua PR #1 ikiwa wazi na `MERGEABLE`, branch `mission-003-independent-work` ikiwa clean kabla ya mabadiliko, na Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ikiwa `ready`. Read-only connector query ilithibitisha `public.ai_job_runs` na `public.schema_migrations` zipo kwenye test branch; production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kuongeza `JobRunStore.claim(record)`, ambayo inafanya atomic idempotency admission kabla ya task kuanza. In-memory na file stores zinakataa duplicate key kwa utaratibu; `NeonJobRunStore` inatumia `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING run_id` dhidi ya unique constraint iliyopo tayari kwenye `ai_job_runs`. `AutomationEngine` sasa haitaanzisha task kwa worker anayeshindwa claim; hii hupunguza race ya distributed duplicate admission bila schema change, migration, role, grant au RLS. Hii bado si lease/heartbeat protocol na haithibitishi exactly-once side effects.
+
+Matokeo halisi ya verification ya checkpoint hii:
+
+- `npm ci` — **passed**; npm iliripoti vulnerability moja ya kiwango cha chini, bila kubadilisha lockfile.
+- `npm test` — **20 passed, 0 failed, 2 skipped**; skips zilikuwa Neon integrations kwa sababu `DATABASE_URL` haipo.
+- `npm run test:integration` — **0 passed, 0 failed, 2 skipped**; command iliripoti wazi kwamba `RUN_NEON_INTEGRATION=true` na non-production `NEON_BRANCH` vinahitajika. Hakuna connection attempt iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite warning ya `__dirname`/`configLoader: native` haikuzuia build.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- `git diff --check` — **passed**.
+- Neon connector read-only check — **passed** kwenye `br-twilight-paper-b9hyxb1y`: `public.ai_job_runs` na `public.schema_migrations` zilikuwepo. Live repository Neon claim test haikuendeshwa kwa sababu connection configuration ya test branch haipo kwenye shell; hakuna credential iliyoundwa, kuhamishwa au kuchapishwa.
+
+Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Hatari zilizosalia ni leases/advisory locks na worker ownership, exactly-once side-effect boundaries, runtime/migration roles na RLS, pamoja na kuthibitisha claim dhidi ya Neon test branch kwa connection configuration iliyoidhinishwa.

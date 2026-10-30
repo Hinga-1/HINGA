@@ -20,6 +20,18 @@ export class NeonJobRunStore implements JobRunStore {
     `;
     return rows.length === 0 ? null : this.toRecord(rows[0]);
   }
+  async claim(record: JobRunRecord): Promise<boolean> {
+    const rows = await this.sql`
+      INSERT INTO ai_job_runs
+        (run_id, job_id, idempotency_key, status, attempt, max_attempts, created_at, started_at, completed_at, error_code)
+      VALUES
+        (${record.runId}, ${record.jobId}, ${record.idempotencyKey}, ${record.status}, ${record.attempt}, ${record.maxAttempts},
+         ${record.createdAt}, ${record.startedAt ?? null}, ${record.completedAt ?? null}, ${record.error ?? null})
+      ON CONFLICT (idempotency_key) DO NOTHING
+      RETURNING run_id;
+    `;
+    return rows.length > 0;
+  }
 
   async save(record: JobRunRecord): Promise<void> {
     await this.sql`
