@@ -9,7 +9,7 @@
     "start": "tsx server.ts",
     "preview": "vite preview",
     "test": "npm run test:unit",
-    "test:unit": "tsx --test src/core/core.test.ts src/core/neon-memory.test.ts src/core/automation/scheduler.test.ts src/core/providers/usage.test.ts",
+    "test:unit": "tsx --test src/core/core.test.ts src/core/neon-memory.test.ts src/core/automation/scheduler.test.ts src/core/automation/neon-job-run-store.test.ts src/core/providers/usage.test.ts",
     "test:integration": "tsx --test server/db.test.ts",
     "ai:status": "tsx src/cli.ts status",
     "ai:task": "tsx src/cli.ts task",

@@ -33,6 +33,8 @@ Mwelekeo uliothibitishwa ni huu: candidate knowledge itenganishwe na approved kn
 
 Hii ni foundation iliyotekelezwa na kuthibitishwa. Haijawa bado durable distributed queue ya production: job definitions, leases, worker ownership, database-backed run store, restart reconciliation na exactly-once side-effect semantics bado havijaunganishwa na Neon.
 
+Baada ya test branch kuundwa, `NeonJobRunStore` imeongezwa na kujaribiwa dhidi ya `ai_job_runs`. Ina-save, inatafuta kwa idempotency key, na inasoma running records bila kuunda schema runtime.
+
 ### 2. Learning loop salama zaidi
 
 `LearningEngine` sasa inatenganisha hatua mbili:
@@ -59,6 +61,7 @@ Imeongezwa:
 - `003_memory_provenance.sql` kwa scope/provenance/expiry fields za `ai_memories`.
 - `scripts/migrate.ts` yenye checksum ledger, advisory lock, direct `DATABASE_URL_UNPOOLED` requirement, explicit non-production `NEON_BRANCH`, na `RUN_NEON_MIGRATIONS=true` guard.
 - `npm run db:migration-check` na `npm run db:migrate` commands.
+- `server/db.ts` na `NeonMemoryStore` sasa zina-verify schema iliyomigrated; hazifanyi tena `CREATE TABLE`/`CREATE INDEX` wakati wa startup.
 
 Migration files zilikaguliwa na `db:migration-check`; `db:migrate` ilikataa kuanza bila `RUN_NEON_MIGRATIONS=true`, kama ilivyotarajiwa. Baada ya test branch kuidhinishwa, migrations zote 001–003 zili-run humo, na migration runner ilirudiwa mara ya pili bila checksum drift au duplicate apply.
 
@@ -72,8 +75,8 @@ Final local checks:
 
 - `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` ziligundulika na version order ni valid.
 - `npm run db:migrate` — **ilifeli kwa guard inayotarajiwa**: `Set RUN_NEON_MIGRATIONS=true to apply migrations`. Hakuna database request iliyofanywa.
-- `npm test` bila database — **15 passed, 1 skipped, 0 failed**. Skip ni Neon integration kwa sababu `DATABASE_URL` haipo.
-- `npm test` ikiwa imeelekezwa kwenye test branch — **21 passed, 0 skipped, 0 failed**; hii ilijumuisha Neon memory persistence tests.
+- `npm test` bila database — **15 passed, 2 skipped, 0 failed**. Skips ni Neon memory na Neon JobRunStore integration kwa sababu `DATABASE_URL` haipo.
+- `npm test` ikiwa imeelekezwa kwenye test branch — **22 passed, 0 skipped, 0 failed**; hii ilijumuisha Neon memory persistence na Neon JobRunStore tests.
 - `npm run test:integration` kwenye test branch — **7 passed, 0 skipped, 0 failed**; schema initialization, branch identity, CRUD insert/retrieve/delete zote zilipita.
 - `npm run lint` — **passed** (`tsc --noEmit`).
 - `npm run build` — **passed**. Vite ilitoa warning isiyozuia build kuhusu `__dirname` na `configLoader: native` ya baadaye.
@@ -87,6 +90,7 @@ Final local checks:
 - Migration ledger ilithibitisha versions `001`, `002`, `003` na checksums.
 - Tables za `ai_job_runs`, `learning_gaps`, `candidate_lessons`, `evaluation_runs`, `evaluation_case_results` na `schema_migrations` zilithibitishwa kuwepo.
 - Columns za `tenant_id`, `session_id`, `source_uri`, `source_hash`, `source_captured_at`, `expires_at` na `verification_status` zilithibitishwa kwenye `ai_memories` ya test branch.
+- `NeonJobRunStore` iliandika na kusoma execution record moja kwenye test branch, kisha ikaifuta baada ya test.
 - Production read-only verification ilionyesha `schema_migrations` haipo na counts bado ni `ai_memories=3`, `neon_items=4`.
 - Test branch baada ya CRUD cleanup ilikuwa na `migration_count=3`, `job_runs_count=0`, `neon_items_count=4`.
 
@@ -96,11 +100,11 @@ Hakuna live Gemini request, external model call, role creation, grant, backup au
 
 ## Mapungufu na hatari zilizobaki
 
-- **Durable jobs:** `FileJobRunStore` si replacement ya database-backed distributed queue. Inahitaji Neon adapter yenye leases/advisory locks, restart reconciliation, persistent job definitions, retry classification na idempotent side-effect boundaries.
+- **Durable jobs:** Neon-backed run records sasa zipo, lakini `AutomationEngine` bado haijaunganishwa default kwa Neon store, na bado inahitaji leases/advisory locks, restart reconciliation, persistent job definitions, retry classification na idempotent side-effect boundaries.
 - **Learning:** candidate validation bado ni conservative string check, si source verification wala semantic truth. Hakuna source retrieval, immutable provenance event log, grader calibration, baseline regression gate au approval actor persistence katika runtime.
 - **Memory:** bado ni lexical search. Tenant/session authorization, RLS policy, expiry filtering kwenye runtime adapters, provenance round-trip, FTS, embeddings, hybrid fusion na retrieval-quality metrics hazijaunganishwa.
 - **Provider:** tier routing bado haijawa route table ya stable model IDs; deadline ya Gemini request bado inatumia race na haiwezi kudai cancellation ya underlying SDK call; retries/fallback policy na per-task budget hazijaunganishwa kwenye orchestrator.
-- **Migrations:** migration runner imejaribiwa live kwenye test branch, lakini role separation haijatekelezwa, na runtime startup bado ina DDL ya zamani kwenye `server/db.ts` na `NeonMemoryStore.initializeSchema()`. Hii inahitaji cleanup ya deployment path kabla ya production.
+- **Migrations:** migration runner imejaribiwa live kwenye test branch na runtime DDL imeondolewa kwenye startup. Role separation bado haijatekelezwa, na deployment process bado inahitaji migration job tofauti kabla ya production.
 - **Database operations:** hakuna runtime least-privilege role, RLS, configured snapshot schedule, encrypted off-platform dump, restore drill, au RPO/RTO evidence.
 - **GitHub:** changes bado ziko local hadi push na remote verification vikamilike.
 

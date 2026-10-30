@@ -10,29 +10,10 @@ export class NeonMemoryStore implements MemoryStore {
     this.sqlDirect = neon(unpooledUrl || databaseUrl);
   }
 
-  /**
-   * Initializes the persistent memory table on Neon Postgres using direct connection
-   */
+  /** Verifies that versioned migrations created the memory table; it never performs DDL. */
   async initializeSchema(): Promise<void> {
-    await this.sqlDirect`
-      CREATE TABLE IF NOT EXISTS ai_memories (
-        id TEXT PRIMARY KEY,
-        type TEXT NOT NULL,
-        key TEXT NOT NULL,
-        content TEXT NOT NULL,
-        importance INT NOT NULL DEFAULT 5,
-        tags TEXT[] NOT NULL DEFAULT '{}',
-        metadata JSONB DEFAULT '{}',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `;
-    await this.sqlDirect`
-      CREATE INDEX IF NOT EXISTS idx_ai_memories_type ON ai_memories(type)
-    `;
-    await this.sqlDirect`
-      CREATE INDEX IF NOT EXISTS idx_ai_memories_key ON ai_memories(key)
-    `;
+    const rows = await this.sqlDirect`SELECT to_regclass('public.ai_memories') AS table_name;`;
+    if (!rows[0]?.table_name) throw new Error('Database migrations have not created public.ai_memories');
   }
 
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry> {
