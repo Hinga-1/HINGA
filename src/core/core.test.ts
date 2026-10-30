@@ -42,6 +42,24 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     // Episodic Memory
     const episode = await system.memory.recordEpisode('Kazi ya jaribio', 'Matokeo mazuri', ['test']);
     assert.ok(episode.id.startsWith('mem_'));
+
+    const scopedStore = new InMemoryStore();
+    await scopedStore.store({
+      type: 'semantic', key: 'tenant-a-live', content: 'live', importance: 5, tags: [],
+      tenantId: 'tenant-a', sessionId: 'session-1', verificationStatus: 'verified',
+    });
+    await scopedStore.store({
+      type: 'semantic', key: 'tenant-a-expired', content: 'expired', importance: 9, tags: [],
+      tenantId: 'tenant-a', sessionId: 'session-1', expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    await scopedStore.store({
+      type: 'semantic', key: 'tenant-b-live', content: 'other tenant', importance: 9, tags: [],
+      tenantId: 'tenant-b', sessionId: 'session-1', verificationStatus: 'verified',
+    });
+    const scoped = await scopedStore.search({ tenantId: 'tenant-a', sessionId: 'session-1', verificationStatus: 'verified' });
+    assert.deepEqual(scoped.map((entry) => entry.key), ['tenant-a-live']);
+    const includingExpired = await scopedStore.search({ tenantId: 'tenant-a', includeExpired: true });
+    assert.equal(includingExpired.length, 2);
   });
 
   await t.test('3. Safety Guardrails & Credential Sanitizer', () => {

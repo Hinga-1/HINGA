@@ -190,3 +190,20 @@ Matokeo halisi ya verification:
 - Neon test-branch read-only connector check — **passed**: `database_name=neondb`, branch `br-twilight-paper-b9hyxb1y`, `migration_count=3`, `job_runs_count=0`; tables za `ai_job_runs` na `schema_migrations` zilithibitishwa. Repository CRUD integration tests hazikuendeshwa bila credentials za test branch.
 
 Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Kazi iliyobaki ni distributed leases/advisory locks, persistent job definitions, tenant/session isolation na exactly-once side-effect boundaries; roles/RLS bado ni blocker ya policy inayohitaji idhini ya wazi.
+
+## Uthibitisho wa execution ya 2026-10-30 — memory scope/provenance contract
+
+Katika execution hii nilikagua PR #1: iko wazi, `MERGEABLE`, na GitHub CI `verify` ilikuwa successful. Branch `mission-003-independent-work` ilikuwa clean kabla ya mabadiliko na ilikuwa mbele ya `origin/main` kwa commits 16; hakuna merge iliyofanywa. Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilikuwa `ready`; production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kukamilisha contract iliyokuwepo tayari kwenye migration `003_memory_provenance.sql`, bila schema change mpya: `MemoryEntry` sasa ina optional `tenantId`, `sessionId`, provenance fields, `expiresAt` na `verificationStatus`; `MemorySearchFilter` sasa inaweza kuchuja tenant/session/status na kwa default haijumuishi entries zilizo-expire. `InMemoryStore` na `NeonMemoryStore` sasa zina-persist/read fields hizi na kutumia scope, verification na expiry predicates katika search. Regression test mpya inathibitisha tenant/session isolation ya search, verification filter na `includeExpired` behavior. Hii si RLS wala authorization enforcement; ni adapter-level contract pekee, na access-control policy bado ni blocker inayohitaji idhini tofauti.
+
+Matokeo halisi ya verification:
+
+- `npm ci` — **passed**; dependencies ziliwekwa kutoka lockfile. Npm iliripoti vulnerability moja ya kiwango cha chini; lockfile haikubadilishwa.
+- `npm test` — **18 passed, 0 failed, 2 skipped**. Skips zilikuwa Neon integration tests kwa sababu `DATABASE_URL` haikuwekwa katika shell hii.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native`/`__dirname`.
+- `npm run db:migration-check` — **passed**; migrations `001`, `002`, `003` ziligundulika kwa mpangilio sahihi.
+- Neon connector read-only verification kwenye test branch — **passed**: `migration_count=3`, provenance columns `7/7`, na indexes `idx_ai_memories_scope` na `idx_ai_memories_expiry` zilithibitishwa. Branch ilikuwa `ready`.
+
+Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Repository-level Neon adapter integration test haikuendeshwa kwa sababu connection secret haikuwekwa kwenye shell; badala yake nilitumia connector read-only verification bila kuhamisha au kuchapisha secret. Hatari zilizosalia: retrieve/delete/clear bado hazijapokea scope contract, RLS/least-privilege enforcement haipo, na distributed authorization haipaswi kudaiwa kutokana na adapter filters pekee. Hatua inayofuata salama ni kuongeza scope-aware mutation contract/tests au kuandika RLS contract kwenye test branch baada ya idhini ya wazi ya roles/grants/RLS.

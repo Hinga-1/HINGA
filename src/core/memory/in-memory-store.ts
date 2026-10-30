@@ -31,6 +31,23 @@ export class InMemoryStore implements MemoryStore {
   async search(filter: MemorySearchFilter): Promise<MemoryEntry[]> {
     let list = Array.from(this.entries.values());
 
+    if (filter.tenantId !== undefined) {
+      list = list.filter((e) => e.tenantId === filter.tenantId);
+    }
+
+    if (filter.sessionId !== undefined) {
+      list = list.filter((e) => e.sessionId === filter.sessionId);
+    }
+
+    if (filter.verificationStatus !== undefined) {
+      list = list.filter((e) => (e.verificationStatus ?? 'unverified') === filter.verificationStatus);
+    }
+
+    if (!filter.includeExpired) {
+      const now = Date.now();
+      list = list.filter((e) => !e.expiresAt || Date.parse(e.expiresAt) > now);
+    }
+
     if (filter.type) {
       list = list.filter((e) => e.type === filter.type);
     }

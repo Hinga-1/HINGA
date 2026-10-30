@@ -92,6 +92,8 @@ export interface ReasoningResult {
 // ----------------------------------------------------
 export type MemoryType = 'working' | 'episodic' | 'semantic';
 
+export type MemoryVerificationStatus = 'unverified' | 'candidate' | 'verified' | 'rejected';
+
 export interface MemoryEntry {
   id: string;
   type: MemoryType;
@@ -101,6 +103,13 @@ export interface MemoryEntry {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  tenantId?: string;
+  sessionId?: string;
+  sourceUri?: string;
+  sourceHash?: string;
+  sourceCapturedAt?: string;
+  expiresAt?: string;
+  verificationStatus?: MemoryVerificationStatus;
   metadata?: Record<string, unknown>;
 }
 
@@ -109,6 +118,10 @@ export interface MemorySearchFilter {
   tags?: string[];
   query?: string;
   limit?: number;
+  tenantId?: string;
+  sessionId?: string;
+  includeExpired?: boolean;
+  verificationStatus?: MemoryVerificationStatus;
 }
 
 export interface MemoryStore {
