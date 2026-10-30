@@ -23,6 +23,30 @@ test('AutomationEngine records bounded retries and idempotent completion', async
   assert.equal(record?.attempt, 2);
 });
 
+test('AutomationEngine rejects concurrent runs before async store lookup completes', async () => {
+  let releaseLookup: (() => void) | undefined;
+  let lookupStarted: (() => void) | undefined;
+  let calls = 0;
+  const lookupReady = new Promise<void>((resolve) => { lookupStarted = resolve; });
+  const store = new InMemoryJobRunStore();
+  const originalLookup = store.findByIdempotencyKey.bind(store);
+  store.findByIdempotencyKey = async (key) => {
+    lookupStarted?.();
+    await new Promise<void>((resolve) => { releaseLookup = resolve; });
+    return originalLookup(key);
+  };
+  const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });
+  engine.registerJob('overlap-job', 'Overlap test', 60_000, async () => { calls++; }, 0);
+
+  const firstRun = engine.runJobNow('overlap-job', 'request-overlap-1');
+  await lookupReady;
+  assert.equal(await engine.runJobNow('overlap-job', 'request-overlap-2'), false);
+  releaseLookup?.();
+
+  assert.equal(await firstRun, true);
+  assert.equal(calls, 1);
+});
+
 test('AutomationEngine times out a signal-aware task and records failure', async () => {
   const store = new InMemoryJobRunStore();
   const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0, executionTimeoutMs: 10 });

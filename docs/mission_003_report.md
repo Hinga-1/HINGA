@@ -172,3 +172,21 @@ Matokeo halisi ya verification:
 - Neon test-branch read-only integration check kupitia connector — **passed**: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`; tables za `ai_job_runs`, `schema_migrations` na tables nyingine za migration zilikuwepo. Hakuna SQL ya production, DDL, role, grant, RLS, fine-tuning au live model call iliyofanywa.
 
 Hatua hii haijatatua blocker ya roles/RLS kwa sababu playbook inakataza roles, grants na RLS bila idhini ya wazi. Pia leases/advisory locks, persistent job definitions, tenant/session isolation na exactly-once side-effect boundaries bado ni hatari zilizo wazi; retry classifier hii ni guard ya policy pekee, si uthibitisho wa distributed exactly-once execution.
+
+
+## Uthibitisho wa execution ya 2026-10-30 — scheduler admission race
+
+Katika execution hii nilikagua PR #1 na branch `mission-003-independent-work`; working tree ilikuwa clean kabla ya mabadiliko. Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilikuwa `ready`, na production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kufunga race ya overlap admission ndani ya `AutomationEngine.runJobNow()`: job sasa inadaiwa kwenye `activeJobs` kabla ya asynchronous `JobRunStore.findByIdempotencyKey()` lookup. Regression test mpya inasimamisha lookup ya kwanza na kuthibitisha invocation ya pili inakataliwa kabla ya task kuanza; task ilitekelezwa mara moja tu. Hii ni guard ya worker-process moja, si lease ya distributed workers, na haibadilishi schema.
+
+Matokeo halisi ya verification:
+
+- `npm ci` — **passed** kutoka lockfile; npm iliripoti vulnerability moja ya kiwango cha chini kwenye dependency tree, bila kubadilisha lockfile.
+- `npm test` — **18 passed, 0 failed, 2 skipped**. Skips zilikuwa Neon integrations kwa sababu `DATABASE_URL`, `NEON_BRANCH` na `RUN_NEON_INTEGRATION=true` hazikuwekwa kwenye shell hii.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native`/`__dirname`.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- Neon test-branch read-only connector check — **passed**: `database_name=neondb`, branch `br-twilight-paper-b9hyxb1y`, `migration_count=3`, `job_runs_count=0`; tables za `ai_job_runs` na `schema_migrations` zilithibitishwa. Repository CRUD integration tests hazikuendeshwa bila credentials za test branch.
+
+Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Kazi iliyobaki ni distributed leases/advisory locks, persistent job definitions, tenant/session isolation na exactly-once side-effect boundaries; roles/RLS bado ni blocker ya policy inayohitaji idhini ya wazi.

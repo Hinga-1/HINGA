@@ -158,20 +158,20 @@ export class AutomationEngine {
   async runJobNow(id: string, idempotencyKey = `manual:${id}:${Date.now()}`): Promise<boolean> {
     const job = this.jobs.get(id);
     if (!job || !job.enabled || this.activeJobs.has(id)) return false;
-    const existing = await this.runStore.findByIdempotencyKey(idempotencyKey);
-    if (existing?.status === 'succeeded') return true;
-
-    const run: JobRunRecord = existing ?? {
-      runId: `run_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      jobId: id,
-      idempotencyKey,
-      status: 'pending',
-      attempt: 0,
-      maxAttempts: job.maxRetries + 1,
-      createdAt: new Date().toISOString(),
-    };
     this.activeJobs.add(id);
     try {
+      const existing = await this.runStore.findByIdempotencyKey(idempotencyKey);
+      if (existing?.status === 'succeeded') return true;
+
+      const run: JobRunRecord = existing ?? {
+        runId: `run_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        jobId: id,
+        idempotencyKey,
+        status: 'pending',
+        attempt: 0,
+        maxAttempts: job.maxRetries + 1,
+        createdAt: new Date().toISOString(),
+      };
       for (let attempt = run.attempt + 1; attempt <= run.maxAttempts; attempt++) {
         run.attempt = attempt;
         run.status = 'running';
