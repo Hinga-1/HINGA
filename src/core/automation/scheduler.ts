@@ -125,6 +125,25 @@ export class AutomationEngine {
     return Array.from(this.jobs.values());
   }
 
+  /**
+   * Marks runs left in `running` state by a previous worker as failed.
+   * Reconciliation is explicit and side-effect free: callers can decide whether
+   * to resubmit a job with a new idempotency key after inspecting the records.
+   */
+  async reconcileInterruptedRuns(): Promise<number> {
+    const interrupted = await this.runStore.listRunning();
+    const completedAt = new Date().toISOString();
+    for (const run of interrupted) {
+      await this.runStore.save({
+        ...run,
+        status: 'failed',
+        completedAt,
+        error: 'worker_restarted',
+      });
+    }
+    return interrupted.length;
+  }
+
   async runJobNow(id: string, idempotencyKey = `manual:${id}:${Date.now()}`): Promise<boolean> {
     const job = this.jobs.get(id);
     if (!job || !job.enabled || this.activeJobs.has(id)) return false;

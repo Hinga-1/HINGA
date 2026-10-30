@@ -55,3 +55,20 @@ test('FileJobRunStore survives a new store instance', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('AutomationEngine reconciles runs interrupted by worker restart', async () => {
+  const store = new InMemoryJobRunStore();
+  await store.save({
+    runId: 'run-interrupted', jobId: 'job-1', idempotencyKey: 'key-interrupted',
+    status: 'running', attempt: 1, maxAttempts: 2,
+    createdAt: new Date().toISOString(), startedAt: new Date().toISOString(),
+  });
+  const engine = new AutomationEngine({ runStore: store });
+
+  assert.equal(await engine.reconcileInterruptedRuns(), 1);
+  const reconciled = await store.findByIdempotencyKey('key-interrupted');
+  assert.equal(reconciled?.status, 'failed');
+  assert.equal(reconciled?.error, 'worker_restarted');
+  assert.ok(reconciled?.completedAt);
+  assert.equal(await engine.reconcileInterruptedRuns(), 0);
+});

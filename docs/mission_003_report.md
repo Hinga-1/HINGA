@@ -30,6 +30,7 @@ Mwelekeo uliothibitishwa ni huu: candidate knowledge itenganishwe na approved kn
 - Idempotency: run iliyofanikiwa yenye key ileile hairudiwi.
 - `InMemoryJobRunStore` kwa tests na `FileJobRunStore` kwa persistence ya local/restart tests.
 - `stop()` inayosafisha timers na ku-abort controllers.
+- `reconcileInterruptedRuns()` sasa inasoma runs zilizoachwa `running` baada ya worker restart na kuziandika kama `failed` kwa kosa la wazi `worker_restarted`; haifanyi side effect retry moja kwa moja.
 
 Hii ni foundation iliyotekelezwa na kuthibitishwa. Haijawa bado durable distributed queue ya production: job definitions, leases, worker ownership, database-backed run store, restart reconciliation na exactly-once side-effect semantics bado havijaunganishwa na Neon.
 
@@ -106,13 +107,17 @@ Hakuna live Gemini request, external model call, role creation, grant, backup au
 - **Provider:** tier routing bado haijawa route table ya stable model IDs; deadline ya Gemini request bado inatumia race na haiwezi kudai cancellation ya underlying SDK call; retries/fallback policy na per-task budget hazijaunganishwa kwenye orchestrator.
 - **Migrations:** migration runner imejaribiwa live kwenye test branch na runtime DDL imeondolewa kwenye startup. Role separation bado haijatekelezwa, na deployment process bado inahitaji migration job tofauti kabla ya production.
 - **Database operations:** hakuna runtime least-privilege role, RLS, configured snapshot schedule, encrypted off-platform dump, restore drill, au RPO/RTO evidence.
-- **GitHub:** changes bado ziko local hadi push na remote verification vikamilike.
+- **GitHub:** PR #1 iko wazi, branch `mission-003-independent-work` iko clean kabla ya mabadiliko, na CI ya remote ilikuwa green kabla ya checkpoint hii. Push na remote verification ya checkpoint hii bado zinangoja.
+
+### Kizuizi cha usalama cha execution hii
+
+Hatua ya kwanza iliyoorodheshwa—runtime/migration roles na RLS—haikufanywa kwa sababu playbook inakataza roles, grants na RLS bila idhini ya wazi ya mtumiaji. Hakuna SQL ya production, DDL, role, grant au RLS iliyotekelezwa katika execution hii.
 
 ## Hatua zinazofuata kwa kipaumbele
 
 1. Tengeneza runtime/migration roles na RLS contract kwenye test branch; usitumie owner credentials kwenye web runtime.
 2. Ondoa runtime DDL na badilisha `server/db.ts`/`NeonMemoryStore` ziwe schema-compatibility checks pekee.
-3. Unganisha `JobRunStore` na `ai_job_runs`, leases/advisory locks, restart reconciliation na safe idempotency keys.
+3. Unganisha `JobRunStore` na `ai_job_runs`, leases/advisory locks, persistent job definitions, retry classification na safe idempotency keys; restart reconciliation ya msingi imeongezwa lakini bado inahitaji worker lifecycle integration.
 4. Ongeza tenant/session identity contract, provenance/expiry fields kwenye `MemoryEntry`, SQL predicates/RLS tests, na adapter contract tests.
 5. Unda versioned evaluation suite/cases/results na approval/promotion records; usidai factual learning mpaka regression/adversarial tests zipite.
 6. Unganisha `UsageLedger` na orchestrator task records, price snapshots na explicit tier route policy.
@@ -122,3 +127,13 @@ Hakuna live Gemini request, external model call, role creation, grant, backup au
 ## Madai ambayo hayapaswi kufanywa bado
 
 Hadi hatua hizo zifanyike na kuthibitishwa, HINGA haipaswi kuelezwa kuwa inajifunza upya model weights, inafanya fine-tuning, inaendelea kujifunza kwa uhuru, ina exactly-once background execution, ina factual knowledge verification, ina tenant isolation production, au ina backup/restore iliyojaribiwa.
+
+## Uthibitisho wa execution ya 2026-10-30
+
+- `npm test` — **16 passed, 2 skipped, 0 failed**; skips zilikuwa integrations kwa sababu `DATABASE_URL` haikuwekwa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; warning ya Vite kuhusu `configLoader: native`/`__dirname` haikuzuia build.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- `npm run test:integration` — **2 skipped, 0 failed** kwa sababu `DATABASE_URL` na `RUN_NEON_INTEGRATION` hazikuwekwa; hakuna connection attempt iliyofanywa.
+- Neon test branch read-only check — **passed**: `schema_migrations=3`, `ai_job_runs=0`, na `public.ai_job_runs` ipo kwenye `br-twilight-paper-b9hyxb1y`; production branch haikuguswa.
+- Mabadiliko ya checkpoint — `AutomationEngine.reconcileInterruptedRuns()` na unit test yake; runs zilizoachwa `running` hubadilishwa kuwa `failed` kwa `worker_restarted`, bila retry ya side effect.
