@@ -16,7 +16,9 @@ test('Neon Postgres - Schema Initialization & Connection', { skip: skipReason },
     assert.equal(health.status, 'ok', `Database connection failed: ${health.error}`);
     assert.ok(health.version?.includes('PostgreSQL'), 'Database version should indicate PostgreSQL');
     assert.equal(health.database, 'neondb');
-    assert.equal(health.branch.toLowerCase(), 'production');
+    const expectedBranch = (process.env.NEON_EXPECTED_BRANCH || process.env.NEON_BRANCH || '').toLowerCase();
+    assert.ok(expectedBranch, 'NEON_EXPECTED_BRANCH or NEON_BRANCH must identify the test branch');
+    assert.equal(health.branch.toLowerCase(), expectedBranch);
     assert.ok(health.latencyMs >= 0);
   });
 });
