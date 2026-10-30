@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initDatabaseSchema, testConnection, createItem, getItems, deleteItem } from './db';
+import { initDatabaseSchema, testConnection, createItem, getItems, deleteItem, sql } from './db';
 
 const canRunIntegration = process.env.RUN_NEON_INTEGRATION === 'true' && process.env.NEON_BRANCH !== 'production';
 const skipReason = canRunIntegration ? undefined : 'Set RUN_NEON_INTEGRATION=true with an explicit non-production NEON_BRANCH';
@@ -52,4 +52,50 @@ test('Neon Postgres - End-to-End CRUD Operations', { skip: skipReason }, async (
     const found = items.find((i) => i.id === createdId);
     assert.equal(found, undefined, 'Deleted item should not be found');
   });
+});
+
+// Migration 004 on the real test branch: the database itself must refuse a second
+// active execution per mission and refuse duplicate idempotency keys, so two
+// stateless HTTP workers racing on a pooled connection cannot both run.
+test('Neon Postgres - Execution ledger single-active guarantee (migration 004)', { skip: skipReason }, async (t) => {
+  const stamp = Date.now();
+  const missionId = `mission-003-it-${stamp}`;
+  const created: string[] = [];
+
+  const insert = (executionId: string, mission: string, idem: string, status: string) => sql`
+    INSERT INTO hinga_executions (execution_id, mission_id, worker_id, worker_mode, idempotency_key, status)
+    VALUES (${executionId}, ${mission}, 'it-worker', 'base44_agent', ${idem}, ${status})`;
+
+  try {
+    await t.test('first active execution for a mission is accepted', async () => {
+      await insert(`${missionId}-e1`, missionId, `${missionId}-e1-key`, 'queued');
+      created.push(`${missionId}-e1`);
+    });
+
+    await t.test('second active execution for the same mission is rejected by the partial unique index', async () => {
+      await assert.rejects(
+        insert(`${missionId}-e2`, missionId, `${missionId}-e2-key`, 'running'),
+        (err: unknown) => (err as { code?: string }).code === '23505',
+        'expected a unique constraint violation (23505)',
+      );
+    });
+
+    await t.test('finishing the execution frees the mission slot for a new active execution', async () => {
+      await sql`UPDATE hinga_executions SET status = 'succeeded', finished_at = NOW() WHERE execution_id = ${`${missionId}-e1`}`;
+      await insert(`${missionId}-e3`, missionId, `${missionId}-e3-key`, 'queued');
+      created.push(`${missionId}-e3`);
+    });
+
+    await t.test('an idempotency key cannot be reused across missions', async () => {
+      await assert.rejects(
+        insert(`${missionId}-e4`, `${missionId}-other`, `${missionId}-e1-key`, 'queued'),
+        (err: unknown) => (err as { code?: string }).code === '23505',
+        'expected a unique constraint violation (23505)',
+      );
+    });
+  } finally {
+    for (const id of created) {
+      await sql`DELETE FROM hinga_executions WHERE execution_id = ${id}`;
+    }
+  }
 });
