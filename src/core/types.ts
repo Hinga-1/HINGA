@@ -124,12 +124,17 @@ export interface MemorySearchFilter {
   verificationStatus?: MemoryVerificationStatus;
 }
 
+export interface MemoryScope {
+  tenantId?: string;
+  sessionId?: string;
+}
+
 export interface MemoryStore {
   store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry>;
-  retrieve(id: string): Promise<MemoryEntry | null>;
+  retrieve(id: string, scope?: MemoryScope): Promise<MemoryEntry | null>;
   search(filter: MemorySearchFilter): Promise<MemoryEntry[]>;
-  delete(id: string): Promise<boolean>;
-  clear(type?: MemoryType): Promise<void>;
+  delete(id: string, scope?: MemoryScope): Promise<boolean>;
+  clear(type?: MemoryType, scope?: MemoryScope): Promise<void>;
 }
 
 // ----------------------------------------------------

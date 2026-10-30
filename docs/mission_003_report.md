@@ -207,3 +207,20 @@ Matokeo halisi ya verification:
 - Neon connector read-only verification kwenye test branch — **passed**: `migration_count=3`, provenance columns `7/7`, na indexes `idx_ai_memories_scope` na `idx_ai_memories_expiry` zilithibitishwa. Branch ilikuwa `ready`.
 
 Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Repository-level Neon adapter integration test haikuendeshwa kwa sababu connection secret haikuwekwa kwenye shell; badala yake nilitumia connector read-only verification bila kuhamisha au kuchapisha secret. Hatari zilizosalia: retrieve/delete/clear bado hazijapokea scope contract, RLS/least-privilege enforcement haipo, na distributed authorization haipaswi kudaiwa kutokana na adapter filters pekee. Hatua inayofuata salama ni kuongeza scope-aware mutation contract/tests au kuandika RLS contract kwenye test branch baada ya idhini ya wazi ya roles/grants/RLS.
+
+
+
+## Uthibitisho wa execution ya 2026-10-30 — scope-aware memory mutations
+Katika execution hii nilikagua PR #1: iko wazi, branch `mission-003-independent-work` iko clean kabla ya mabadiliko, na GitHub CI ya mwisho iliyopo ilikuwa successful. Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilikuwa `ready`; production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kuongeza `MemoryScope` ya hiari (`tenantId`, `sessionId`) kwenye `MemoryStore` kwa `retrieve`, `delete` na `clear`. `InMemoryStore` sasa inatumia scope hiyo kwenye mutations na reads; `NeonMemoryStore` inatumia predicates zinazolingana kwenye SQL. Regression tests zinathibitisha tenant isiyolingana haiwezi kusoma/kufuta entry, scope sahihi inaweza kufuta entry, na `clear` ya tenant moja haiathiri tenant nyingine. Hii ni adapter-level contract pekee; si RLS, authorization, au uthibitisho wa distributed tenant isolation.
+
+Matokeo halisi ya verification ya checkpoint hii:
+- `npm ci` — **passed** kutoka `package-lock.json`; npm iliripoti vulnerability moja ya kiwango cha chini, bila kubadilisha lockfile.
+- `npm test` — **18 passed, 0 failed, 2 skipped**. Skips zilikuwa Neon repository integrations kwa sababu `DATABASE_URL` haikuwekwa kwenye shell hii.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite warning ya `configLoader: native`/`__dirname` haikuzuia build.
+- `npm run db:migration-check` — **passed**, migrations `001`, `002`, `003` valid.
+- Safe Neon test-branch read-only SQL check — **passed** kwenye `br-twilight-paper-b9hyxb1y`: `database_name=neondb`, `migration_count=3`, `job_runs_count=0`, `memory_count=3`, na tables `public.ai_memories` na `public.schema_migrations` zilikuwepo.
+
+Hakuna production SQL, DDL, migration apply, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Repository-level Neon integration tests bado zinahitaji connection configuration ya test branch; sikuweka wala sikuchapisha secret. Hatari zilizosalia ni RLS/least-privilege enforcement, authorization ya runtime, scope-aware `MemoryManager` API, na distributed worker isolation. Hatua hii haidai tenant isolation ya production.

@@ -1,4 +1,4 @@
-import { MemoryEntry, MemorySearchFilter, MemoryStore, MemoryType } from '../types.ts';
+import { MemoryEntry, MemorySearchFilter, MemoryScope, MemoryStore, MemoryType } from '../types.ts';
 
 /**
  * Fast, deterministic in-memory store for unit tests, offline sandbox & fallback.
@@ -24,8 +24,10 @@ export class InMemoryStore implements MemoryStore {
     return newEntry;
   }
 
-  async retrieve(id: string): Promise<MemoryEntry | null> {
-    return this.entries.get(id) || null;
+  async retrieve(id: string, scope?: MemoryScope): Promise<MemoryEntry | null> {
+    const entry = this.entries.get(id);
+    if (!entry || !matchesScope(entry, scope)) return null;
+    return entry;
   }
 
   async search(filter: MemorySearchFilter): Promise<MemoryEntry[]> {
@@ -70,17 +72,20 @@ export class InMemoryStore implements MemoryStore {
     return list;
   }
 
-  async delete(id: string): Promise<boolean> {
-    return this.entries.delete(id);
+  async delete(id: string, scope?: MemoryScope): Promise<boolean> {
+    const entry = this.entries.get(id);
+    return Boolean(entry && matchesScope(entry, scope) && this.entries.delete(id));
   }
 
-  async clear(type?: MemoryType): Promise<void> {
+  async clear(type?: MemoryType, scope?: MemoryScope): Promise<void> {
     if (!type) {
-      this.entries.clear();
+      for (const [id, entry] of this.entries.entries()) {
+        if (matchesScope(entry, scope)) this.entries.delete(id);
+      }
       return;
     }
     for (const [id, entry] of this.entries.entries()) {
-      if (entry.type === type) {
+      if (entry.type === type && matchesScope(entry, scope)) {
         this.entries.delete(id);
       }
     }
@@ -89,4 +94,8 @@ export class InMemoryStore implements MemoryStore {
   get totalCount(): number {
     return this.entries.size;
   }
+}
+function matchesScope(entry: MemoryEntry, scope?: MemoryScope): boolean {
+  return (scope?.tenantId === undefined || entry.tenantId === scope.tenantId)
+    && (scope?.sessionId === undefined || entry.sessionId === scope.sessionId);
 }

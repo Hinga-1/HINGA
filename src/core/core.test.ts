@@ -60,6 +60,14 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.deepEqual(scoped.map((entry) => entry.key), ['tenant-a-live']);
     const includingExpired = await scopedStore.search({ tenantId: 'tenant-a', includeExpired: true });
     assert.equal(includingExpired.length, 2);
+    const tenantAEntry = await scopedStore.retrieve(scoped[0].id, { tenantId: 'tenant-a', sessionId: 'session-1' });
+    assert.equal(tenantAEntry?.key, 'tenant-a-live');
+    assert.equal(await scopedStore.retrieve(scoped[0].id, { tenantId: 'tenant-b' }), null);
+    assert.equal(await scopedStore.delete(scoped[0].id, { tenantId: 'tenant-b' }), false);
+    assert.equal(await scopedStore.delete(scoped[0].id, { tenantId: 'tenant-a', sessionId: 'session-1' }), true);
+    await scopedStore.clear(undefined, { tenantId: 'tenant-a' });
+    assert.equal((await scopedStore.search({ tenantId: 'tenant-a', includeExpired: true })).length, 0);
+    assert.equal((await scopedStore.search({ tenantId: 'tenant-b', includeExpired: true })).length, 1);
   });
 
   await t.test('3. Safety Guardrails & Credential Sanitizer', () => {

@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { MemoryEntry, MemorySearchFilter, MemoryStore, MemoryType, MemoryVerificationStatus } from '../types.ts';
+import { MemoryEntry, MemorySearchFilter, MemoryScope, MemoryStore, MemoryType, MemoryVerificationStatus } from '../types.ts';
 
 type MemoryRow = {
   id: string; type: string; key: string; content: string; importance: number; tags: string[];
@@ -59,12 +59,16 @@ export class NeonMemoryStore implements MemoryStore {
     return toMemoryEntry(rows[0] as MemoryRow);
   }
 
-  async retrieve(id: string): Promise<MemoryEntry | null> {
+  async retrieve(id: string, scope?: MemoryScope): Promise<MemoryEntry | null> {
     const rows = await this.sql`
       SELECT id, type, key, content, importance, tags, metadata, tenant_id, session_id,
         source_uri, source_hash, source_captured_at, expires_at, verification_status,
         created_at, updated_at
-      FROM ai_memories WHERE id = ${id} LIMIT 1;
+      FROM ai_memories
+      WHERE id = ${id}
+        AND (${scope?.tenantId ?? null}::text IS NULL OR tenant_id = ${scope?.tenantId ?? null})
+        AND (${scope?.sessionId ?? null}::text IS NULL OR session_id = ${scope?.sessionId ?? null})
+      LIMIT 1;
     `;
     return rows.length === 0 ? null : toMemoryEntry(rows[0] as MemoryRow);
   }
@@ -88,14 +92,24 @@ export class NeonMemoryStore implements MemoryStore {
     return rows.map((row: unknown) => toMemoryEntry(row as MemoryRow));
   }
 
-  async delete(id: string): Promise<boolean> {
-    const result = await this.sql`DELETE FROM ai_memories WHERE id = ${id} RETURNING id;`;
+  async delete(id: string, scope?: MemoryScope): Promise<boolean> {
+    const result = await this.sql`
+      DELETE FROM ai_memories
+      WHERE id = ${id}
+        AND (${scope?.tenantId ?? null}::text IS NULL OR tenant_id = ${scope?.tenantId ?? null})
+        AND (${scope?.sessionId ?? null}::text IS NULL OR session_id = ${scope?.sessionId ?? null})
+      RETURNING id;
+    `;
     return result.length > 0;
   }
 
-  async clear(type?: MemoryType): Promise<void> {
-    if (type) await this.sql`DELETE FROM ai_memories WHERE type = ${type};`;
-    else await this.sql`DELETE FROM ai_memories;`;
+  async clear(type?: MemoryType, scope?: MemoryScope): Promise<void> {
+    await this.sql`
+      DELETE FROM ai_memories
+      WHERE (${type ?? null}::text IS NULL OR type = ${type ?? null})
+        AND (${scope?.tenantId ?? null}::text IS NULL OR tenant_id = ${scope?.tenantId ?? null})
+        AND (${scope?.sessionId ?? null}::text IS NULL OR session_id = ${scope?.sessionId ?? null});
+    `;
   }
 
   async count(): Promise<number> {
