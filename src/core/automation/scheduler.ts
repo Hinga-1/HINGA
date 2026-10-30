@@ -17,6 +17,17 @@ export class InMemoryJobRunStore implements JobRunStore {
     return true;
   }
 
+  async beginAttempt(runId: string, attempt: number, startedAt: string): Promise<boolean> {
+    const record = this.records.get(runId);
+    if (!record || !['pending', 'failed', 'timed_out'].includes(record.status)) return false;
+    record.status = 'running';
+    record.attempt = attempt;
+    record.startedAt = startedAt;
+    record.completedAt = undefined;
+    record.error = undefined;
+    return true;
+  }
+
   async save(record: JobRunRecord): Promise<void> {
     this.records.set(record.runId, { ...record });
   }
@@ -63,6 +74,13 @@ export class FileJobRunStore extends InMemoryJobRunStore {
     const claimed = await super.claim(record);
     if (claimed) await this.flush();
     return claimed;
+  }
+
+  override async beginAttempt(runId: string, attempt: number, startedAt: string): Promise<boolean> {
+    await this.ensureLoaded();
+    const begun = await super.beginAttempt(runId, attempt, startedAt);
+    if (begun) await this.flush();
+    return begun;
   }
 
   override async save(record: JobRunRecord): Promise<void> {
@@ -192,9 +210,14 @@ export class AutomationEngine {
       }
       for (let attempt = run.attempt + 1; attempt <= run.maxAttempts; attempt++) {
         run.attempt = attempt;
-        run.status = 'running';
         run.startedAt = new Date().toISOString();
-        await this.runStore.save(run);
+        const begun = await this.runStore.beginAttempt(run.runId, attempt, run.startedAt);
+        if (!begun) {
+          const current = await this.runStore.findByIdempotencyKey(idempotencyKey);
+          return current?.status === 'succeeded';
+        }
+        run.status = 'running';
+        run.error = undefined;
         const controller = new AbortController();
         this.controllers.set(id, controller);
         const timeout = setTimeout(() => controller.abort(), this.executionTimeoutMs);

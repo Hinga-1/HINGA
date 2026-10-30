@@ -35,6 +35,40 @@ test('JobRunStore atomically accepts only one duplicate idempotency claim', asyn
   assert.equal((await store.findByIdempotencyKey('claim-key'))?.runId, 'run-claim-1');
 });
 
+test('JobRunStore atomically admits only one worker for an execution attempt', async () => {
+  const store = new InMemoryJobRunStore();
+  await store.claim({
+    runId: 'run-attempt-1', jobId: 'job-attempt', idempotencyKey: 'attempt-key', status: 'pending',
+    attempt: 0, maxAttempts: 1, createdAt: new Date().toISOString(),
+  });
+  const startedAt = new Date().toISOString();
+  const admissions = await Promise.all([
+    store.beginAttempt('run-attempt-1', 1, startedAt),
+    store.beginAttempt('run-attempt-1', 1, startedAt),
+  ]);
+  assert.equal(admissions.filter(Boolean).length, 1);
+  assert.equal((await store.findByIdempotencyKey('attempt-key'))?.status, 'running');
+});
+
+test('two engines sharing a store execute one idempotency key once', async () => {
+  let calls = 0;
+  const store = new InMemoryJobRunStore();
+  const first = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });
+  const second = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });
+  first.registerJob('shared-job', 'Shared job', 60_000, async () => {
+    calls++;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }, 0);
+  second.registerJob('shared-job', 'Shared job', 60_000, async () => { calls++; }, 0);
+
+  const results = await Promise.all([
+    first.runJobNow('shared-job', 'shared-key'),
+    second.runJobNow('shared-job', 'shared-key'),
+  ]);
+  assert.deepEqual(results.sort(), [false, true]);
+  assert.equal(calls, 1);
+});
+
 test('AutomationEngine records the completion time on the scheduled job', async () => {
   const store = new InMemoryJobRunStore();
   const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });

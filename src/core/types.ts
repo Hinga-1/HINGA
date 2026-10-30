@@ -253,6 +253,8 @@ export interface JobRunStore {
   findByIdempotencyKey(key: string): Promise<JobRunRecord | null>;
   /** Inserts a new run only when its idempotency key is not already claimed. */
   claim(record: JobRunRecord): Promise<boolean>;
+  /** Atomically transitions an eligible run into one executing attempt. */
+  beginAttempt(runId: string, attempt: number, startedAt: string): Promise<boolean>;
   save(record: JobRunRecord): Promise<void>;
   listRunning(): Promise<JobRunRecord[]>;
 }
