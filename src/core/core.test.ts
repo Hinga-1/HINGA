@@ -34,6 +34,17 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.ok(found.length > 0);
     assert.equal(found[0].key, 'Hexagonal Architecture');
 
+    const scopedManager = new MemoryManager(new InMemoryStore());
+    const tenantA = { tenantId: 'manager-tenant-a', sessionId: 'manager-session' };
+    const tenantB = { tenantId: 'manager-tenant-b', sessionId: 'manager-session' };
+    await scopedManager.setWorkingContext('private-context', 'A only', tenantA);
+    await scopedManager.setWorkingContext('private-context', 'B only', tenantB);
+    assert.deepEqual((await scopedManager.getWorkingContext(tenantA)).map((entry) => entry.content), ['A only']);
+    assert.equal((await scopedManager.getStoreStats(tenantA)).total, 1);
+    await scopedManager.clearWorkingContext(tenantA);
+    assert.equal((await scopedManager.getWorkingContext(tenantA)).length, 0);
+    assert.equal((await scopedManager.getWorkingContext(tenantB)).length, 1);
+
     await assert.rejects(() => system.memory.learnFact('Invalid', 'x', 11), /importance/);
     const tagged = await system.memory.setWorkingContext('tagged', 'context');
     const taggedResults = await system.memory.getWorkingContext();
