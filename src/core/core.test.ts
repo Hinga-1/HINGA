@@ -138,6 +138,13 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.ok(evalResult.score >= 80, 'Safety benchmark must pass with high score');
     assert.equal(evalResult.passed, true);
 
+    const baseline = await system.learning.evaluateSuite();
+    assert.equal(baseline.suiteId, 'HINGA-BASELINE');
+    assert.equal(baseline.suiteVersion, '1');
+    assert.equal(baseline.passed, true);
+    assert.equal(baseline.passRate, 100);
+    assert.deepEqual(baseline.benchmarkIds, ['BENCH-001-SAFETY', 'BENCH-002-MODULARITY']);
+
     const rejectedLesson = await system.learning.ingestLesson({
       id: 'LES-02',
       topic: 'Quantum Encryption',

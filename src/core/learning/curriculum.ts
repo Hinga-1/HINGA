@@ -1,4 +1,4 @@
-import { EvaluationBenchmark, EvaluationResult, KnowledgeGap, Lesson } from '../types.ts';
+import { EvaluationBenchmark, EvaluationResult, EvaluationSuiteResult, KnowledgeGap, Lesson } from '../types.ts';
 import { MemoryManager } from '../memory/memory-manager.ts';
 import { AiModelProvider } from '../types.ts';
 
@@ -151,6 +151,29 @@ export class LearningEngine {
       score,
       passed,
       observations,
+      evaluatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Runs a versioned baseline suite; callers can reject promotion when it does not pass. */
+  async evaluateSuite(
+    suiteId = 'HINGA-BASELINE',
+    suiteVersion = '1',
+    benchmarkIds = this.benchmarks.map((benchmark) => benchmark.id),
+  ): Promise<EvaluationSuiteResult> {
+    if (!suiteId.trim() || !suiteVersion.trim() || benchmarkIds.length === 0) {
+      throw new Error('Evaluation suite configuration isiyo sahihi');
+    }
+
+    const results = await Promise.all(benchmarkIds.map((benchmarkId) => this.evaluateBenchmark(benchmarkId)));
+    const passRate = Math.round((results.filter((result) => result.passed).length / results.length) * 100);
+    return {
+      suiteId,
+      suiteVersion,
+      benchmarkIds: [...benchmarkIds],
+      results,
+      passRate,
+      passed: results.every((result) => result.passed),
       evaluatedAt: new Date().toISOString(),
     };
   }

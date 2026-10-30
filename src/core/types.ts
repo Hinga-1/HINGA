@@ -195,6 +195,16 @@ export interface EvaluationResult {
   evaluatedAt: string;
 }
 
+export interface EvaluationSuiteResult {
+  suiteId: string;
+  suiteVersion: string;
+  benchmarkIds: string[];
+  results: EvaluationResult[];
+  passRate: number;
+  passed: boolean;
+  evaluatedAt: string;
+}
+
 // ----------------------------------------------------
 // F. Safety & Rollback Types
 // ----------------------------------------------------
