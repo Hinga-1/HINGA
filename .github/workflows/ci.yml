@@ -1,25 +1,34 @@
 name: CI
 
+# Real, external test evidence for the autonomous worker: the Base44 execution
+# gate reads these check runs instead of trusting a worker's self-report.
 on:
-  push:
-    branches: [main, mission-002-audit]
   pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'mission-*']
 
-permissions:
-  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
           cache: npm
-      - run: npm ci
-      - run: npm run db:migration-check
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      - name: Install
+        run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Lint (tsc --noEmit)
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Migration check
+        run: npm run db:migration-check
