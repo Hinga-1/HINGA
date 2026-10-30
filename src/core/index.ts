@@ -1,5 +1,5 @@
 import { config } from './config.ts';
-import { AiModelProvider, SystemHealthReport } from './types.ts';
+import { AiModelProvider, JobRunStore, SystemHealthReport } from './types.ts';
 import { MockModelProvider } from './providers/mock-provider.ts';
 import { GeminiModelProvider } from './providers/gemini-provider.ts';
 import { IdentityManager } from './identity/identity-manager.ts';
@@ -11,6 +11,7 @@ import { SafetyGuardrails, RollbackManager } from './safety/guardrails.ts';
 import { LearningEngine } from './learning/curriculum.ts';
 import { AgentOrchestrator } from './orchestrator/orchestrator.ts';
 import { AutomationEngine } from './automation/scheduler.ts';
+import { NeonJobRunStore } from './automation/neon-job-run-store.ts';
 import { ObservabilityEngine } from './observability/logger.ts';
 
 export class AiCoreSystem {
@@ -30,7 +31,8 @@ export class AiCoreSystem {
   private constructor(
     provider: AiModelProvider,
     memoryStore: any,
-    isNeon: boolean
+    isNeon: boolean,
+    automationRunStore?: JobRunStore
   ) {
     this.provider = provider;
     this.isNeonConnected = isNeon;
@@ -61,7 +63,7 @@ export class AiCoreSystem {
     );
 
     // G. Automation Engine
-    this.automation = new AutomationEngine();
+    this.automation = new AutomationEngine({ runStore: automationRunStore });
 
     // H. Observability & Recovery
     this.observability = new ObservabilityEngine();
@@ -95,6 +97,7 @@ export class AiCoreSystem {
     // 2. Select Memory Persistence Store
     let memoryStore: any;
     let isNeon = false;
+    let automationRunStore: JobRunStore | undefined;
 
     if (!options?.forceInMemory && config.databaseUrl) {
       try {
@@ -102,6 +105,7 @@ export class AiCoreSystem {
         await neonStore.initializeSchema();
         memoryStore = neonStore;
         isNeon = true;
+        automationRunStore = new NeonJobRunStore(config.databaseUrl);
       } catch (err) {
         console.warn('⚠️ Imeshindikana kuunganisha Neon kwa sasa, inatumia In-Memory store kama njia mbadala:', err);
         memoryStore = new InMemoryStore();
@@ -110,7 +114,7 @@ export class AiCoreSystem {
       memoryStore = new InMemoryStore();
     }
 
-    const system = new AiCoreSystem(provider, memoryStore, isNeon);
+    const system = new AiCoreSystem(provider, memoryStore, isNeon, automationRunStore);
     if (!isNeon && !options?.forceInMemory) {
       system.observability.markDegraded('Neon persistence haikupatikana; in-memory fallback inatumika');
     }
