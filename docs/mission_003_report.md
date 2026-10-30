@@ -417,3 +417,23 @@ Matokeo halisi ya verification:
 - Safe Neon connector schema check — **passed** kwenye `br-twilight-paper-b9hyxb1y`: tables `ai_job_runs`, `ai_memories`, `candidate_lessons`, `evaluation_case_results`, `evaluation_runs`, `learning_gaps`, `neon_items` na `schema_migrations` zipo; `ai_job_runs` ina unique `idempotency_key` constraint/index. Hakuna query ya production iliyofanywa.
 
 Kizuizi kinachoendelea: lease/heartbeat/worker ownership schema bado ni material architecture choice inayohitaji idhini/maelekezo ya mtumiaji; runtime/migration roles, grants na RLS pia zimezuiwa na playbook bila idhini ya wazi. Neon repository integration evidence ya moja kwa moja inahitaji connection configuration ya test branch ambayo haipo kwenye shell hii. Hakuna madai ya distributed exactly-once, production tenant isolation, factual verification, backup/restore au model fine-tuning yanayofanywa.
+
+## Uthibitisho wa execution ya 2026-10-30 — Neon durable-attempt integration coverage
+
+Katika execution hii nilikagua PR #1 ikiwa wazi na `CLEAN`, branch `mission-003-independent-work` ikiwa kwenye `9b16bf0`, na working tree ikiwa clean kabla ya mabadiliko. Lease/heartbeat/worker-ownership schema bado ni material architecture choice iliyorekodiwa kama blocker; roles, grants na RLS hazikuguswa. Production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Kipaumbele kidogo salama kilichotekelezwa ni kuongeza coverage kwenye `src/core/automation/neon-job-run-store.test.ts` kwa CAS contracts zilizopo tayari: `beginAttempt()` inakubali worker mmoja tu kuanzisha attempt, na `failIfRunning()` inakubali worker mmoja tu ku-reconcile run inayokuwa `running`. Test pia inathibitisha attempt number na `integration_failure` error round-trip kabla ya cleanup. Hakuna schema change, migration, DDL, role, grant, RLS, production SQL, backup, restore, fine-tuning au live model call iliyofanywa.
+
+Matokeo halisi ya verification:
+
+- `npm ci` — **passed**; lockfile haikubadilishwa. Npm iliripoti vulnerability moja ya kiwango cha chini.
+- `npm test` — **23 passed, 0 failed, 2 skipped** (tests 25). Skips ni Neon memory na Neon JobRunStore integration kwa sababu `DATABASE_URL`, `RUN_NEON_INTEGRATION` na `NEON_BRANCH` hazikuwekwa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native`/`__dirname`.
+- `npm run db:migration-check` — **passed**; migrations `001`, `002`, `003` ni valid na ziko kwa mpangilio sahihi.
+- `npm run test:integration` — **0 passed, 0 failed, 2 skipped**; runner ilikataa kujaribu connection bila `RUN_NEON_INTEGRATION=true` na explicit non-production `NEON_BRANCH`, na `DATABASE_URL` haikuwepo.
+- `git diff --check` — **passed**.
+
+Neon MCP server iliripoti kuwa haija-authenticate katika mwanzo wa execution; kwa hiyo sikuunda credential mpya, sikuomba connection string, na sikufanya query yoyote ya production au test branch kupitia connector. Hivyo test ya moja kwa moja ya `NeonJobRunStore` bado inahitaji Neon connector authentication/configuration ya test branch pekee. Hii checkpoint inathibitisha coverage ya repository code, si uthibitisho wa runtime dhidi ya Neon.
+
+Hatua salama inayofuata bado inahitaji idhini/maelekezo ya mtumiaji kuhusu lease schema contract (owner, heartbeat, expiry na stale-lease semantics); sitaibuni au kui-migrate bila idhini hiyo. Hakuna madai ya distributed exactly-once execution, production tenant isolation, factual verification, backup/restore au model fine-tuning yanayofanywa.

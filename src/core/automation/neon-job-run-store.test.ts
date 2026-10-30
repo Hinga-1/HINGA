@@ -28,6 +28,16 @@ test('Neon JobRunStore persists and reads execution records on an isolated branc
     const found = await store.findByIdempotencyKey(key);
     assert.equal(found?.runId, record.runId);
     assert.equal((await store.listRunning()).some((run) => run.idempotencyKey === key), true);
+    const startedAt = new Date().toISOString();
+    assert.equal(await store.beginAttempt(record.runId, 2, startedAt), true);
+    assert.equal(await store.beginAttempt(record.runId, 2, startedAt), false);
+    assert.equal((await store.findByIdempotencyKey(key))?.attempt, 2);
+    const completedAt = new Date().toISOString();
+    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), true);
+    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), false);
+    const failed = await store.findByIdempotencyKey(key);
+    assert.equal(failed?.status, 'failed');
+    assert.equal(failed?.error, 'integration_failure');
     await store.save({ ...record, status: 'succeeded', completedAt: new Date().toISOString() });
     assert.equal((await store.findByIdempotencyKey(key))?.status, 'succeeded');
   } finally {
