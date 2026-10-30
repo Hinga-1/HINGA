@@ -66,4 +66,19 @@ export class MemoryManager {
       total: all.length,
     };
   }
+
+  /** Reads one memory entry while preserving the caller's tenant/session scope. */
+  async retrieveMemory(id: string, scope?: MemoryScope): Promise<MemoryEntry | null> {
+    return this.store.retrieve(id, scope);
+  }
+
+  /** Deletes one memory entry only when it belongs to the requested scope. */
+  async deleteMemory(id: string, scope?: MemoryScope): Promise<boolean> {
+    return this.store.delete(id, scope);
+  }
+
+  /** Clears memories of an optional type only inside the requested scope. */
+  async clearMemory(type?: MemoryType, scope?: MemoryScope): Promise<void> {
+    return this.store.clear(type, scope);
+  }
 }

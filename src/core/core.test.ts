@@ -41,9 +41,15 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     await scopedManager.setWorkingContext('private-context', 'B only', tenantB);
     assert.deepEqual((await scopedManager.getWorkingContext(tenantA)).map((entry) => entry.content), ['A only']);
     assert.equal((await scopedManager.getStoreStats(tenantA)).total, 1);
+    const tenantAMemory = (await scopedManager.getWorkingContext(tenantA))[0];
+    assert.equal((await scopedManager.retrieveMemory(tenantAMemory.id, tenantB)), null);
+    assert.equal(await scopedManager.deleteMemory(tenantAMemory.id, tenantB), false);
+    assert.equal(await scopedManager.deleteMemory(tenantAMemory.id, tenantA), true);
     await scopedManager.clearWorkingContext(tenantA);
     assert.equal((await scopedManager.getWorkingContext(tenantA)).length, 0);
     assert.equal((await scopedManager.getWorkingContext(tenantB)).length, 1);
+    await scopedManager.clearMemory(undefined, tenantB);
+    assert.equal((await scopedManager.getStoreStats(tenantB)).total, 0);
 
     await assert.rejects(() => system.memory.learnFact('Invalid', 'x', 11), /importance/);
     const tagged = await system.memory.setWorkingContext('tagged', 'context');
