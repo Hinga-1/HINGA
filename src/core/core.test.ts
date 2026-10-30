@@ -144,6 +144,10 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.equal(baseline.passed, true);
     assert.equal(baseline.passRate, 100);
     assert.deepEqual(baseline.benchmarkIds, ['BENCH-001-SAFETY', 'BENCH-002-MODULARITY']);
+    await assert.rejects(
+      () => system.learning.evaluateSuite('HINGA-BASELINE', '1', ['BENCH-001-SAFETY', 'BENCH-001-SAFETY']),
+      /Evaluation suite configuration isiyo sahihi/,
+    );
 
     const rejectedLesson = await system.learning.ingestLesson({
       id: 'LES-02',

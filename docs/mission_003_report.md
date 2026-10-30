@@ -400,3 +400,20 @@ Matokeo halisi ya verification:
 - Neon connector read-only query iliyolengwa wazi kwenye `br-twilight-paper-b9hyxb1y` — **blocked** kwa kosa halisi `supplied credentials do not pass authentication [HTTP 401] supplied credentials do not pass authentication`. Sikuunda au kuchapisha credential mpya, sikujaribu production, na sikurudia hatua hiyo hatari.
 
 Mabadiliko haya hayakuongeza migration, DDL, role, grant, RLS, backup, restore, fine-tuning au live model call. Lease/heartbeat schema contract bado ni blocker ya architecture inayohitaji idhini/maelekezo ya mtumiaji; roles/grants/RLS bado ni blocker ya policy. Neon integration evidence ya moja kwa moja inahitaji connector authentication/configuration itakayofanya kazi kwenye safe branch pekee.
+
+## Uthibitisho wa execution ya 2026-10-30 — evaluation suite duplicate-case guard
+Katika execution hii nilikagua PR #1 ikiwa wazi, `MERGEABLE`/`CLEAN`, branch `mission-003-independent-work` ikiwa remote, na CI `verify` ya mwisho ikiwa `SUCCESS`. Neon test branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilikuwa `ready`; production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua ndogo iliyotekelezwa ni kuzuia `LearningEngine.evaluateSuite()` kupokea `benchmarkIds` zenye duplicate. Suite yenye duplicate ingeweza kuhesabu benchmark ileile mara mbili na kupotosha `passRate`/regression evidence. Sasa validation inakataa duplicate IDs kabla ya provider call; regression test mpya inathibitisha kosa la configuration. Hakuna migration, DDL, role, grant, RLS, backup, restore, fine-tuning, live model call au Neon write iliyofanywa.
+
+Matokeo halisi ya verification:
+- `npm ci` — **passed**; dependencies ziliwekwa kutoka lockfile. Npm iliripoti vulnerability moja ya kiwango cha chini; lockfile haikubadilishwa.
+- `npm test` — **23 passed, 0 failed, 2 skipped** (tests 25). Skips ni Neon memory na Neon JobRunStore integrations kwa sababu `DATABASE_URL` haikuwekwa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `__dirname`/`configLoader: native`.
+- `npm run db:migration-check` — **passed**; migrations `001`, `002`, `003` ni valid na ziko kwa mpangilio sahihi.
+- `npm run test:integration` — **0 passed, 0 failed, 2 skipped**; test runner ilithibitisha `DATABASE_URL` haipo na ikahitaji `RUN_NEON_INTEGRATION=true` pamoja na `NEON_BRANCH` non-production. Hakuna connection attempt iliyofanywa.
+- `git diff --check` — **passed**.
+- Safe Neon connector schema check — **passed** kwenye `br-twilight-paper-b9hyxb1y`: tables `ai_job_runs`, `ai_memories`, `candidate_lessons`, `evaluation_case_results`, `evaluation_runs`, `learning_gaps`, `neon_items` na `schema_migrations` zipo; `ai_job_runs` ina unique `idempotency_key` constraint/index. Hakuna query ya production iliyofanywa.
+
+Kizuizi kinachoendelea: lease/heartbeat/worker ownership schema bado ni material architecture choice inayohitaji idhini/maelekezo ya mtumiaji; runtime/migration roles, grants na RLS pia zimezuiwa na playbook bila idhini ya wazi. Neon repository integration evidence ya moja kwa moja inahitaji connection configuration ya test branch ambayo haipo kwenye shell hii. Hakuna madai ya distributed exactly-once, production tenant isolation, factual verification, backup/restore au model fine-tuning yanayofanywa.

@@ -161,7 +161,7 @@ export class LearningEngine {
     suiteVersion = '1',
     benchmarkIds = this.benchmarks.map((benchmark) => benchmark.id),
   ): Promise<EvaluationSuiteResult> {
-    if (!suiteId.trim() || !suiteVersion.trim() || benchmarkIds.length === 0) {
+    if (!suiteId.trim() || !suiteVersion.trim() || benchmarkIds.length === 0 || new Set(benchmarkIds).size !== benchmarkIds.length) {
       throw new Error('Evaluation suite configuration isiyo sahihi');
     }
 
