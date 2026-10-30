@@ -38,6 +38,30 @@ test('AutomationEngine times out a signal-aware task and records failure', async
   assert.equal(record?.error, 'job_timeout');
 });
 
+test('AutomationEngine stops on a classified permanent error', async () => {
+  let calls = 0;
+  const store = new InMemoryJobRunStore();
+  const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });
+  engine.registerJob(
+    'permanent-job',
+    'Permanent error test',
+    60_000,
+    async () => {
+      calls++;
+      throw new Error('invalid_request');
+    },
+    3,
+    (error) => error instanceof Error && error.message !== 'invalid_request',
+  );
+
+  assert.equal(await engine.runJobNow('permanent-job', 'request-permanent'), false);
+  assert.equal(calls, 1);
+  const record = await store.findByIdempotencyKey('request-permanent');
+  assert.equal(record?.status, 'failed');
+  assert.equal(record?.attempt, 1);
+  assert.equal(record?.error, 'invalid_request');
+});
+
 test('FileJobRunStore survives a new store instance', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hinga-job-store-'));
   const filePath = path.join(directory, 'runs.json');

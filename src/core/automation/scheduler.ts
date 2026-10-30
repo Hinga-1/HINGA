@@ -70,6 +70,10 @@ export interface AutomationOptions {
   retryBackoffMs?: number;
 }
 
+export type RetryClassifier = (error: unknown) => boolean;
+
+const retryAllErrors: RetryClassifier = () => true;
+
 export class AutomationEngine {
   private jobs: Map<string, ScheduledJob> = new Map();
   private timers: Map<string, NodeJS.Timeout> = new Map();
@@ -86,10 +90,17 @@ export class AutomationEngine {
     this.retryBackoffMs = Math.max(0, options.retryBackoffMs ?? 25);
   }
 
-  registerJob(id: string, name: string, intervalMs: number, task: (signal?: AbortSignal) => Promise<void>, maxRetries = 3): ScheduledJob {
+  registerJob(
+    id: string,
+    name: string,
+    intervalMs: number,
+    task: (signal?: AbortSignal) => Promise<void>,
+    maxRetries = 3,
+    retryOnError: RetryClassifier = retryAllErrors,
+  ): ScheduledJob {
     if (!id.trim() || intervalMs < 1 || maxRetries < 0) throw new Error('Job configuration isiyo sahihi');
     const job: ScheduledJob = {
-      id, name, intervalMs, enabled: true, maxRetries,
+      id, name, intervalMs, enabled: true, maxRetries, retryOnError,
       nextRun: new Date(Date.now() + intervalMs).toISOString(), task,
     };
     this.jobs.set(id, job);
@@ -183,7 +194,11 @@ export class AutomationEngine {
           run.status = timedOut ? 'timed_out' : 'failed';
           run.error = error instanceof Error ? error.message : 'unknown_job_error';
           await this.runStore.save(run);
-          if (attempt < run.maxAttempts) await sleep(this.retryBackoffMs * 2 ** (attempt - 1));
+          if (attempt < run.maxAttempts && job.retryOnError(error)) {
+            await sleep(this.retryBackoffMs * 2 ** (attempt - 1));
+          } else {
+            break;
+          }
         } finally {
           clearTimeout(timeout);
           this.controllers.delete(id);

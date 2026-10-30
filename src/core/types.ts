@@ -212,6 +212,7 @@ export interface ScheduledJob {
   nextRun: string;
   enabled: boolean;
   maxRetries: number;
+  retryOnError: (error: unknown) => boolean;
   task: (signal?: AbortSignal) => Promise<void>;
 }
 
