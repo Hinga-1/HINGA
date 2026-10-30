@@ -188,6 +188,7 @@ export class AutomationEngine {
           run.status = 'succeeded';
           run.completedAt = new Date().toISOString();
           await this.runStore.save(run);
+          job.lastRun = run.completedAt;
           return true;
         } catch (error: unknown) {
           const timedOut = error instanceof Error && error.message === 'job_timeout';
@@ -206,6 +207,7 @@ export class AutomationEngine {
       }
       run.completedAt = new Date().toISOString();
       await this.runStore.save(run);
+      job.lastRun = run.completedAt;
       return false;
     } finally {
       this.activeJobs.delete(id);

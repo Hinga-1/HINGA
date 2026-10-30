@@ -23,6 +23,17 @@ test('AutomationEngine records bounded retries and idempotent completion', async
   assert.equal(record?.attempt, 2);
 });
 
+test('AutomationEngine records the completion time on the scheduled job', async () => {
+  const store = new InMemoryJobRunStore();
+  const engine = new AutomationEngine({ runStore: store, retryBackoffMs: 0 });
+  const job = engine.registerJob('observed-job', 'Observed job', 60_000, async () => undefined, 0);
+
+  assert.equal(job.lastRun, undefined);
+  assert.equal(await engine.runJobNow('observed-job', 'request-observed'), true);
+  assert.ok(job.lastRun);
+  assert.equal(job.lastRun, (await store.findByIdempotencyKey('request-observed'))?.completedAt);
+});
+
 test('AutomationEngine rejects concurrent runs before async store lookup completes', async () => {
   let releaseLookup: (() => void) | undefined;
   let lookupStarted: (() => void) | undefined;
