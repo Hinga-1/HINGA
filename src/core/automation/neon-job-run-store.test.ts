@@ -63,32 +63,38 @@ test('Neon JobRunStore persists and reads execution records on an isolated branc
   const cleanup = neon(config.databaseUrl);
   const key = `integration-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   try {
+    // The lifecycle a real caller follows (engine + db.test.ts): claim inserts a
+    // PENDING row, beginAttempt is the only transition into running, failure
+    // makes it retryable, and save completes it. A claim must NOT insert a
+    // running row: beginAttempt would then be refused by its own guard,
+    // contradiction the store contract keeps on purpose.
     const record = {
       runId: `run-${key}`,
       jobId: 'integration-job',
       idempotencyKey: key,
-      status: 'running' as const,
-      attempt: 1,
+      status: 'pending' as const,
+      attempt: 0,
       maxAttempts: 2,
       createdAt: new Date().toISOString(),
-      startedAt: new Date().toISOString(),
     };
-    assert.equal(await store.claim(record), true);
-    assert.equal(await store.claim({ ...record, runId: `${record.runId}-duplicate` }), false);
-    const found = await store.findByIdempotencyKey(key);
-    assert.equal(found?.runId, record.runId);
-    assert.equal((await store.listRunning()).some((run) => run.idempotencyKey === key), true);
+    assert.equal(await store.claim(record), true, 'the first claim must insert the pending run');
+    assert.equal(await store.claim({ ...record, runId: `${record.runId}-rival` }), false, 'a rival claim on the same idempotency key must be refused');
+    const claimed = await store.findByIdempotencyKey(key);
+    assert.equal(claimed?.runId, record.runId);
+    assert.equal(claimed?.status, 'pending', 'a fresh claim stays pending until an attempt begins');
     const startedAt = new Date().toISOString();
-    assert.equal(await store.beginAttempt(record.runId, 2, startedAt), true);
-    assert.equal(await store.beginAttempt(record.runId, 2, startedAt), false);
-    assert.equal((await store.findByIdempotencyKey(key))?.attempt, 2);
+    assert.equal(await store.beginAttempt(record.runId, 1, startedAt), true, 'pending must become running');
+    assert.equal(await store.beginAttempt(record.runId, 1, startedAt), false, 'a running job cannot begin again');
+    assert.equal((await store.findByIdempotencyKey(key))?.attempt, 1);
+    assert.equal((await store.listRunning()).some((run) => run.idempotencyKey === key), true, 'listRunning must see the running job');
     const completedAt = new Date().toISOString();
-    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), true);
-    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), false);
+    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), true, 'running must become failed');
+    assert.equal(await store.failIfRunning(record.runId, completedAt, 'integration_failure'), false, 'a failed job cannot fail again');
     const failed = await store.findByIdempotencyKey(key);
     assert.equal(failed?.status, 'failed');
     assert.equal(failed?.error, 'integration_failure');
-    await store.save({ ...record, status: 'succeeded', completedAt: new Date().toISOString() });
+    assert.equal(await store.beginAttempt(record.runId, 2, startedAt), true, 'a failed job may retry via beginAttempt');
+    await store.save({ ...record, status: 'succeeded' as const, completedAt: new Date().toISOString() });
     assert.equal((await store.findByIdempotencyKey(key))?.status, 'succeeded');
   } finally {
     await cleanup`DELETE FROM ai_job_runs WHERE idempotency_key = ${key};`;
