@@ -3,6 +3,26 @@ import { AiModelProvider, ModelRequest, ModelResponse } from '../types.ts';
 import { MockModelProvider } from './mock-provider.ts';
 import { resolveModelForTier } from './model-routing.ts';
 
+const DEFAULT_TIMEOUT_MS = 3000;
+
+/**
+ * Deadline inayobaki kwa request hii, kwa milliseconds.
+ * - `request.deadlineAt` (epoch ms) ipo: tumia muda uliobaki.
+ * - Haipo: tumia default.
+ * Thamani <= 0 ina maana deadline tayari imepita; Infinity/NaN inarudisha default.
+ */
+export function deadlineTimeoutMs(request: Pick<ModelRequest, 'deadlineAt'>, now: number = Date.now()): number {
+  const deadlineAt = request.deadlineAt;
+  if (typeof deadlineAt !== 'number' || !Number.isFinite(deadlineAt)) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  const remaining = deadlineAt - now;
+  if (!Number.isFinite(remaining)) {
+    return DEFAULT_TIMEOUT_MS;
+  }
+  return remaining;
+}
+
 export class GeminiModelProvider implements AiModelProvider {
   readonly id = 'gemini-provider';
   readonly name = 'Google Gemini AI Provider';
@@ -45,37 +65,67 @@ export class GeminiModelProvider implements AiModelProvider {
 
     try {
       const modelName = resolveModelForTier(request.tier);
+      const timeoutMs = deadlineTimeoutMs(request, startedAt);
+      if (timeoutMs <= 0) {
+        // Deadline ya caller tayari imepita; usianze call ya mtandao kabisa.
+        throw new Error(`Deadline ya Gemini request imepita kabla call ianze (${Math.round(timeoutMs)}ms)`);
+      }
 
-      const apiCall = this.ai.models.generateContent({
-        model: modelName,
-        contents: request.prompt,
-        config: {
-          systemInstruction: request.systemPrompt,
-          temperature: request.temperature ?? 0.2,
-          maxOutputTokens: request.maxTokens ?? 1500,
-        },
-      });
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout ya mtandao wa Gemini API (> 3000ms)')), 3000)
-      );
-
-      const response = await Promise.race([apiCall, timeoutPromise]);
-
-      return {
-        content: response.text || '',
-        model: modelName,
-        latencyMs: Date.now() - startedAt,
-        fallback: { used: false },
-        usage: {
-          promptTokens: response.usageMetadata?.promptTokenCount || 0,
-          completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
-          totalTokens: response.usageMetadata?.totalTokenCount || 0,
-        },
-        metadata: {
-          modelVersion: response.modelVersion,
-        },
+      // Cancellation moja inounga deadline na signal ya nje: badala ya Promise.race
+      // inayoiacha call ya SDK ikiendelea nyuma, abortSignal inaifuta underlying fetch.
+      const controller = new AbortController();
+      const signal = controller.signal;
+      let timedOut = false;
+      const abortForDeadline = () => {
+        timedOut = true;
+        controller.abort();
       };
+      const externalSignal = request.signal;
+      const abortFromExternal = () => controller.abort();
+      if (externalSignal?.aborted) {
+        throw new Error('Gemini request ilighairiwa (signal ya nje ilikuwa aborted kabla call ianze)');
+      }
+      externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
+
+      const timer = setTimeout(abortForDeadline, timeoutMs);
+      try {
+        const response = await this.ai.models.generateContent({
+          model: modelName,
+          contents: request.prompt,
+          config: {
+            systemInstruction: request.systemPrompt,
+            temperature: request.temperature ?? 0.2,
+            maxOutputTokens: request.maxTokens ?? 1500,
+            abortSignal: signal,
+          },
+        });
+
+        return {
+          content: response.text || '',
+          model: modelName,
+          latencyMs: Date.now() - startedAt,
+          fallback: { used: false },
+          usage: {
+            promptTokens: response.usageMetadata?.promptTokenCount || 0,
+            completionTokens: response.usageMetadata?.candidatesTokenCount || 0,
+            totalTokens: response.usageMetadata?.totalTokenCount || 0,
+          },
+          metadata: {
+            modelVersion: response.modelVersion,
+          },
+        };
+      } catch (err: unknown) {
+        if (timedOut) {
+          throw new Error(`Timeout ya mtandao wa Gemini API (deadline ya ${Math.round(timeoutMs)}ms imepita, call imekatwa)`);
+        }
+        if (externalSignal?.aborted) {
+          throw new Error('Gemini request ilighairiwa na signal ya nje (call imekatwa)');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+        externalSignal?.removeEventListener('abort', abortFromExternal);
+      }
     } catch (err: unknown) {
       // Trip circuit breaker for 60 seconds to provide instant failover on subsequent requests
       this.circuitBreakerTrippedUntil = Date.now() + 60000;
