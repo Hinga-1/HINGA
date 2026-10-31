@@ -482,3 +482,12 @@ Matokeo halisi ya verification:
 - Neon MCP `describe_branch` ya `br-twilight-paper-b9hyxb1y` — **passed** read-only; `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, migration ledger na indexes za execution/lease zipo. Hakuna write au query ya production iliyofanywa.
 
 Hakuna production SQL, migration apply, DDL mpya, role, grant, RLS, backup, restore, fine-tuning au live model call iliyofanywa. Checkpoint hii haidai distributed exactly-once execution, production tenant isolation, factual verification, backup/restore au mission completion. Blockers zilizosalia ni human review/sign-off ya PR, direct repository Neon integration evidence inayohitaji configuration ya safe branch, na policy approval kwa roles/grants/RLS; scheduler haijazimwa.
+
+
+## Checkpoint 2026-10-31T00:15Z - Neon ledger contract fix, lease ownership proven end to end
+
+Execution `exec_1793405090372_1e723a` (attempt 1) fixed a real contract violation in `NeonExecutionLedger`: queries returned raw snake_case Postgres rows (`lease_key`, `execution_id`, `idempotency_key`) while `ExecutionLedger` promises camelCase, and the rows were cast, so no type error could catch it. `mapLeaseRow` and `mapExecutionRow` now run at every query boundary: dates become ISO strings, NUMERIC columns become numbers, optional columns stay `undefined`, and a lost upsert race still surfaces as `null`.
+
+The same commit adds a six-case integration suite on the isolated test branch `mission-003-test-20261030` that runs the exact SQL a worker would run: first acquisition wins, a second worker cannot take an active lease, the owner renews via heartbeat while a stranger is refused, a stranger cannot release the lease, an expired lease is taken over by the next worker, and a released lease is free for the next acquisition. This closes the lease expiry/ownership half of the open risk noted in the previous checkpoint.
+
+Verification for this change: unit tests 39 pass / 0 fail (2 skipped, tests 41), `tsc --noEmit` clean, `vite build` ok, migration files 001-004 valid, integration suite 19 pass / 0 fail on the test branch (13 existing plus 6 new). Before running, the endpoint was probed for the presence of the migration 004 tables and confirmed to hold zero live executions and zero live leases; production was not touched, no secret was written to the repository, and no merge to `main` was performed. Remaining unchanged: `pullRequestClean` still awaits human review, roles/grants/RLS remain blocked pending explicit approval.

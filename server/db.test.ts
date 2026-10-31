@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initDatabaseSchema, testConnection, createItem, getItems, deleteItem, sql } from './db';
+import { NeonExecutionLedger, type SqlClient } from '../src/core/automation/execution-ledger';
 
 const canRunIntegration = process.env.RUN_NEON_INTEGRATION === 'true' && process.env.NEON_BRANCH !== 'production';
 const skipReason = canRunIntegration ? undefined : 'Set RUN_NEON_INTEGRATION=true with an explicit non-production NEON_BRANCH';
@@ -97,5 +98,83 @@ test('Neon Postgres - Execution ledger single-active guarantee (migration 004)',
     for (const id of created) {
       await sql`DELETE FROM hinga_executions WHERE execution_id = ${id}`;
     }
+  }
+});
+
+
+// Migration 004 on the real test branch, through the same NeonExecutionLedger SQL a
+// worker uses: exactly one owner per lease, foreign heartbeat/release refused, an
+// expired lease is taken over, and a released lease is free again. Also proves the
+// snake_case -> camelCase row mapping end to end on a live connection.
+test('Neon Postgres - Worker lease expiry and ownership (migration 004)', { skip: skipReason }, async (t) => {
+  const stamp = Date.now();
+  const leaseKey = `hinga:it:lease-${stamp}`;
+  const ttlMs = 10 * 60_000;
+  const ledgerClient: SqlClient = {
+    query: <T>(statement: string, params: unknown[] = []) => sql.query(statement, params) as Promise<T[]>,
+  };
+  const ledger = new NeonExecutionLedger(ledgerClient);
+
+  try {
+    await t.test('the first worker acquires the lease', async () => {
+      const lease = await ledger.acquireLease({
+        leaseKey,
+        workerId: 'worker-a',
+        executionId: `it-exec-${stamp}-a`,
+        ttlMs,
+      });
+      assert.ok(lease, 'expected the lease to be acquired');
+      assert.equal(lease.leaseKey, leaseKey);
+      assert.equal(lease.workerId, 'worker-a');
+    });
+
+    await t.test('a second worker cannot take an active lease', async () => {
+      const lease = await ledger.acquireLease({
+        leaseKey,
+        workerId: 'worker-b',
+        executionId: `it-exec-${stamp}-b`,
+        ttlMs,
+      });
+      assert.equal(lease, null, 'the atomic upsert must not hand over an active lease');
+    });
+
+    await t.test('the owner renews with a heartbeat, a stranger is refused', async () => {
+      assert.equal(await ledger.heartbeatLease(leaseKey, 'worker-a', ttlMs), true);
+      assert.equal(await ledger.heartbeatLease(leaseKey, 'worker-b', ttlMs), false);
+    });
+
+    await t.test('a stranger cannot release the lease', async () => {
+      assert.equal(await ledger.releaseLease(leaseKey, 'worker-b', 'test'), false);
+      const lease = await ledger.getLease(leaseKey);
+      assert.ok(lease, 'the lease must still exist');
+      assert.equal(lease.releasedAt, undefined, 'a refused release must not mark the lease released');
+    });
+
+    await t.test('an expired lease is taken over by the next worker', async () => {
+      await sql`UPDATE hinga_worker_leases SET expires_at = NOW() - INTERVAL '5 seconds' WHERE lease_key = ${leaseKey}`;
+      const lease = await ledger.acquireLease({
+        leaseKey,
+        workerId: 'worker-c',
+        executionId: `it-exec-${stamp}-c`,
+        ttlMs,
+      });
+      assert.ok(lease, 'an expired lease must be re-acquirable');
+      assert.equal(lease.workerId, 'worker-c');
+      assert.equal(lease.releasedAt, undefined);
+    });
+
+    await t.test('a released lease is free for the next acquisition', async () => {
+      assert.equal(await ledger.releaseLease(leaseKey, 'worker-c', 'test-complete'), true);
+      const lease = await ledger.acquireLease({
+        leaseKey,
+        workerId: 'worker-d',
+        executionId: `it-exec-${stamp}-d`,
+        ttlMs,
+      });
+      assert.ok(lease, 'a released lease must be acquirable again');
+      assert.equal(lease.workerId, 'worker-d');
+    });
+  } finally {
+    await sql`DELETE FROM hinga_worker_leases WHERE lease_key = ${leaseKey}`;
   }
 });

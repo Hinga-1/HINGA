@@ -9,7 +9,9 @@ import {
   evaluateCompletionGate,
   isStale,
   isTransientError,
+  NeonExecutionLedger,
   type ExecutionRecord,
+  type SqlClient,
 } from './execution-ledger.ts';
 
 const baseExecution = (overrides: Partial<ExecutionRecord> = {}): ExecutionRecord => {
@@ -226,4 +228,113 @@ test('production targets and forbidden operations are refused', () => {
     assertSafeTargets({ neonBranch: 'mission-003-test-20261030', baseBranch: 'mission-003-independent-work', operation: 'push' }).length,
     0,
   );
+});
+
+const fakeClient = (rows: Record<string, unknown>[], statements: string[] = []): SqlClient => ({
+  query: async <T>(statement: string, _params?: unknown[]): Promise<T[]> => {
+    statements.push(statement);
+    return rows as T[];
+  },
+});
+
+test('neon ledger maps snake_case lease rows onto the camelCase contract', async () => {
+  const rows = [
+    {
+      lease_key: 'hinga:mission:MISSION-003',
+      worker_id: 'worker-a',
+      execution_id: 'exec-1',
+      acquired_at: new Date('2026-10-31T00:00:00Z'),
+      heartbeat_at: new Date('2026-10-31T00:01:00Z'),
+      expires_at: new Date('2026-10-31T00:26:00Z'),
+      released_at: null,
+      release_reason: null,
+    },
+  ];
+  const ledger = new NeonExecutionLedger(fakeClient(rows));
+  const lease = await ledger.acquireLease({
+    leaseKey: 'hinga:mission:MISSION-003',
+    workerId: 'worker-a',
+    executionId: 'exec-1',
+    ttlMs: 25 * 60_000,
+  });
+  assert.ok(lease, 'expected the acquisition to succeed');
+  assert.equal(lease.leaseKey, 'hinga:mission:MISSION-003');
+  assert.equal(lease.workerId, 'worker-a');
+  assert.equal(lease.executionId, 'exec-1');
+  assert.equal(lease.acquiredAt, '2026-10-31T00:00:00.000Z');
+  assert.equal(lease.heartbeatAt, '2026-10-31T00:01:00.000Z');
+  assert.equal(lease.expiresAt, '2026-10-31T00:26:00.000Z');
+  assert.equal(lease.releasedAt, undefined);
+  assert.equal(lease.releaseReason, undefined);
+});
+
+test('neon lease rows keep released state and a lost acquisition returns null', async () => {
+  const releasedRow = {
+    lease_key: 'hinga:mission:MISSION-003',
+    worker_id: 'worker-a',
+    execution_id: 'exec-1',
+    acquired_at: new Date('2026-10-30T23:00:00Z'),
+    heartbeat_at: new Date('2026-10-30T23:20:00Z'),
+    expires_at: new Date('2026-10-30T23:45:00Z'),
+    released_at: new Date('2026-10-30T23:44:00Z'),
+    release_reason: 'finished',
+  };
+  const ledger = new NeonExecutionLedger(fakeClient([releasedRow]));
+  const lease = await ledger.getLease('hinga:mission:MISSION-003');
+  assert.ok(lease, 'expected the released lease to still be readable');
+  assert.equal(lease.releasedAt, '2026-10-30T23:44:00.000Z');
+  assert.equal(lease.releaseReason, 'finished');
+
+  const loser = new NeonExecutionLedger(fakeClient([]));
+  const denied = await loser.acquireLease({
+    leaseKey: 'hinga:mission:MISSION-003',
+    workerId: 'worker-b',
+    executionId: 'exec-2',
+    ttlMs: 25 * 60_000,
+  });
+  assert.equal(denied, null, 'a lost upsert race must surface as null, not as a fake lease');
+});
+
+test('neon execution rows map onto the ExecutionRecord contract', async () => {
+  const execRow = {
+    execution_id: 'exec-9',
+    mission_id: 'MISSION-003',
+    worker_id: 'worker-a',
+    worker_mode: 'base44_agent',
+    idempotency_key: 'idem-9',
+    status: 'succeeded',
+    attempt: 1,
+    max_attempts: 3,
+    started_at: new Date('2026-10-31T00:00:00Z'),
+    heartbeat_at: null,
+    finished_at: new Date('2026-10-31T00:20:00Z'),
+    error_code: null,
+    error_message: null,
+    commit_sha: 'abc1234',
+    pull_request_url: 'https://github.com/Hinga-1/HINGA/pull/1',
+    test_summary: { tests: 'passed', lint: 'passed' },
+    estimated_cost_usd: '0.100000',
+    actual_cost_usd: null,
+    created_at: new Date('2026-10-31T00:00:00Z'),
+    updated_at: new Date('2026-10-31T00:20:00Z'),
+  };
+  const ledger = new NeonExecutionLedger(fakeClient([execRow, execRow]));
+  const finished = await ledger.finishExecution('exec-9', { status: 'succeeded' });
+  assert.ok(finished, 'expected the finished record to be returned');
+  assert.equal(finished.executionId, 'exec-9');
+  assert.equal(finished.missionId, 'MISSION-003');
+  assert.equal(finished.workerMode, 'base44_agent');
+  assert.equal(finished.idempotencyKey, 'idem-9');
+  assert.equal(finished.status, 'succeeded');
+  assert.equal(finished.finishedAt, '2026-10-31T00:20:00.000Z');
+  assert.equal(finished.heartbeatAt, undefined);
+  assert.equal(finished.commitSha, 'abc1234');
+  assert.equal(finished.pullRequestUrl, 'https://github.com/Hinga-1/HINGA/pull/1');
+  assert.deepEqual(finished.testSummary, { tests: 'passed', lint: 'passed' });
+  assert.equal(finished.estimatedCostUsd, 0.1);
+  assert.equal(finished.actualCostUsd, undefined);
+  const recent = await ledger.listRecent('MISSION-003');
+  assert.equal(recent.length, 2, 'listRecent must map every row');
+  assert.equal(recent[0].executionId, 'exec-9');
+  assert.equal(recent[1].executionId, 'exec-9');
 });

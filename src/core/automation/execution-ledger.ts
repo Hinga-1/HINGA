@@ -446,6 +446,58 @@ export interface SqlClient {
   query<T = Record<string, unknown>>(statement: string, params?: unknown[]): Promise<T[]>;
 }
 
+/** Raw Postgres rows are snake_case; the ExecutionLedger contract is camelCase. */
+type DbRow = Record<string, unknown>;
+
+function toIsoString(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+function mapLeaseRow(row: DbRow): LeaseRecord {
+  const lease: LeaseRecord = {
+    leaseKey: String(row.lease_key),
+    workerId: String(row.worker_id),
+    executionId: String(row.execution_id),
+    acquiredAt: toIsoString(row.acquired_at) ?? '',
+    heartbeatAt: toIsoString(row.heartbeat_at) ?? '',
+    expiresAt: toIsoString(row.expires_at) ?? '',
+  };
+  const releasedAt = toIsoString(row.released_at);
+  if (releasedAt) lease.releasedAt = releasedAt;
+  const releaseReason = toIsoString(row.release_reason);
+  if (releaseReason) lease.releaseReason = releaseReason;
+  return lease;
+}
+
+function mapExecutionRow(row: DbRow): ExecutionRecord {
+  return {
+    executionId: String(row.execution_id),
+    missionId: String(row.mission_id),
+    workerId: String(row.worker_id),
+    workerMode: String(row.worker_mode) as WorkerMode,
+    idempotencyKey: String(row.idempotency_key),
+    status: String(row.status) as ExecutionStatus,
+    attempt: Number(row.attempt),
+    maxAttempts: Number(row.max_attempts),
+    startedAt: toIsoString(row.started_at),
+    heartbeatAt: toIsoString(row.heartbeat_at),
+    finishedAt: toIsoString(row.finished_at),
+    errorCode: toIsoString(row.error_code),
+    errorMessage: toIsoString(row.error_message),
+    commitSha: toIsoString(row.commit_sha),
+    pullRequestUrl: toIsoString(row.pull_request_url),
+    testSummary: (row.test_summary ?? {}) as Record<string, unknown>,
+    estimatedCostUsd: Number(row.estimated_cost_usd),
+    actualCostUsd:
+      row.actual_cost_usd === null || row.actual_cost_usd === undefined
+        ? undefined
+        : Number(row.actual_cost_usd),
+    createdAt: toIsoString(row.created_at) ?? '',
+    updatedAt: toIsoString(row.updated_at) ?? '',
+  };
+}
+
 export class NeonExecutionLedger implements ExecutionLedger {
   constructor(
     private readonly client: SqlClient,
@@ -454,7 +506,7 @@ export class NeonExecutionLedger implements ExecutionLedger {
 
   async acquireLease(request: LeaseRequest): Promise<LeaseRecord | null> {
     validateLeaseRequest(request);
-    const rows = await this.client.query<LeaseRecord>(
+    const rows = await this.client.query<DbRow>(
       `INSERT INTO hinga_worker_leases (lease_key, worker_id, execution_id, heartbeat_at, expires_at)
        VALUES ($1, $2, $3, NOW(), NOW() + make_interval(secs => $4))
        ON CONFLICT (lease_key) DO UPDATE
@@ -470,16 +522,16 @@ export class NeonExecutionLedger implements ExecutionLedger {
        RETURNING lease_key, worker_id, execution_id, acquired_at, heartbeat_at, expires_at`,
       [request.leaseKey, request.workerId, request.executionId, Math.ceil(request.ttlMs / 1000)],
     );
-    return rows[0] ?? null;
+    return rows[0] ? mapLeaseRow(rows[0]) : null;
   }
 
   async getLease(leaseKey: string): Promise<LeaseRecord | undefined> {
-    const rows = await this.client.query<LeaseRecord>(
+    const rows = await this.client.query<DbRow>(
       `SELECT lease_key, worker_id, execution_id, acquired_at, heartbeat_at, expires_at, released_at, release_reason
          FROM hinga_worker_leases WHERE lease_key = $1`,
       [leaseKey],
     );
-    return rows[0];
+    return rows[0] ? mapLeaseRow(rows[0]) : undefined;
   }
 
   async heartbeatLease(leaseKey: string, workerId: string, ttlMs: number): Promise<boolean> {
@@ -509,7 +561,7 @@ export class NeonExecutionLedger implements ExecutionLedger {
 
   async createExecution(record: ExecutionRecord): Promise<{ created: boolean; record: ExecutionRecord }> {
     try {
-      const rows = await this.client.query<ExecutionRecord>(
+      const rows = await this.client.query<DbRow>(
         `INSERT INTO hinga_executions
            (execution_id, mission_id, worker_id, worker_mode, idempotency_key, status, attempt, max_attempts,
             estimated_cost_usd, test_summary, created_at, updated_at)
@@ -534,12 +586,12 @@ export class NeonExecutionLedger implements ExecutionLedger {
       // Unique index on active executions: another worker won the race.
       if (!/duplicate key|unique/i.test(String(error))) throw error;
     }
-    const existing = await this.client.query<ExecutionRecord>(
+    const existing = await this.client.query<DbRow>(
       `SELECT * FROM hinga_executions WHERE idempotency_key = $1 OR (mission_id = $2 AND status IN ('queued','running'))
          ORDER BY created_at DESC LIMIT 1`,
       [record.idempotencyKey, record.missionId],
     );
-    return { created: false, record: existing[0] ?? record };
+    return { created: false, record: existing[0] ? mapExecutionRow(existing[0]) : record };
   }
 
   async markRunning(executionId: string, startedAt: string): Promise<boolean> {
@@ -557,7 +609,7 @@ export class NeonExecutionLedger implements ExecutionLedger {
     executionId: string,
     patch: Partial<ExecutionRecord> & { status: ExecutionStatus },
   ): Promise<ExecutionRecord | undefined> {
-    const rows = await this.client.query<ExecutionRecord>(
+    const rows = await this.client.query<DbRow>(
       `UPDATE hinga_executions
           SET status = $2,
               finished_at = COALESCE($3, NOW()),
@@ -584,32 +636,33 @@ export class NeonExecutionLedger implements ExecutionLedger {
         patch.actualCostUsd ?? null,
       ],
     );
-    return rows[0];
+    return rows[0] ? mapExecutionRow(rows[0]) : undefined;
   }
 
   async findActiveExecution(missionId: string): Promise<ExecutionRecord | undefined> {
-    const rows = await this.client.query<ExecutionRecord>(
+    const rows = await this.client.query<DbRow>(
       `SELECT * FROM hinga_executions WHERE mission_id = $1 AND status IN ('queued','running')
          ORDER BY created_at DESC LIMIT 1`,
       [missionId],
     );
-    return rows[0];
+    return rows[0] ? mapExecutionRow(rows[0]) : undefined;
   }
 
   async findLastFailedExecution(missionId: string): Promise<ExecutionRecord | undefined> {
-    const rows = await this.client.query<ExecutionRecord>(
+    const rows = await this.client.query<DbRow>(
       `SELECT * FROM hinga_executions WHERE mission_id = $1 AND status IN ('failed','timed_out')
          ORDER BY updated_at DESC LIMIT 1`,
       [missionId],
     );
-    return rows[0];
+    return rows[0] ? mapExecutionRow(rows[0]) : undefined;
   }
 
   async listRecent(missionId: string, limit = 20): Promise<ExecutionRecord[]> {
-    return this.client.query<ExecutionRecord>(
+    const rows = await this.client.query<DbRow>(
       `SELECT * FROM hinga_executions WHERE mission_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [missionId, limit],
     );
+    return rows.map(mapExecutionRow);
   }
 
   /**
