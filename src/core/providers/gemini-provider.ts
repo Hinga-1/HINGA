@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { AiModelProvider, ModelRequest, ModelResponse } from '../types.ts';
 import { MockModelProvider } from './mock-provider.ts';
+import { resolveModelForTier } from './model-routing.ts';
 
 export class GeminiModelProvider implements AiModelProvider {
   readonly id = 'gemini-provider';
@@ -43,7 +44,7 @@ export class GeminiModelProvider implements AiModelProvider {
     }
 
     try {
-      const modelName = 'gemini-flash-latest';
+      const modelName = resolveModelForTier(request.tier);
 
       const apiCall = this.ai.models.generateContent({
         model: modelName,
