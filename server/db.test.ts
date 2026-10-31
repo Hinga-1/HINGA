@@ -178,3 +178,84 @@ test('Neon Postgres - Worker lease expiry and ownership (migration 004)', { skip
     await sql`DELETE FROM hinga_worker_leases WHERE lease_key = ${leaseKey}`;
   }
 });
+
+// NeonJobRunStore on the real test branch: the scheduler's JobRunStore contract must
+// hold on Postgres exactly as the in-memory implementation promises, because a
+// restarted worker relies on claim idempotency and status-transition guards to avoid
+// running the same job twice or double-counting a failure.
+test('Neon Postgres - JobRunStore claim and retry contract (migration 002)', { skip: skipReason }, async (t) => {
+  const { NeonJobRunStore } = await import('../src/core/automation/neon-job-run-store.ts');
+  const store = new NeonJobRunStore(process.env.DATABASE_URL || '');
+  const stamp = Date.now();
+  const runId = `it-jobrun-${stamp}`;
+  const idempotencyKey = `it-idem-${stamp}`;
+  const baseRecord = {
+    runId,
+    jobId: 'it-job',
+    idempotencyKey,
+    status: 'pending' as const,
+    attempt: 0,
+    maxAttempts: 3,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await t.test('a duplicate claim with the same idempotency key is refused by the database', async () => {
+      assert.equal(await store.claim(baseRecord), true, 'the first claim must succeed');
+      assert.equal(
+        await store.claim({ ...baseRecord, runId: `${runId}-rival`, jobId: 'it-job-rival' }),
+        false,
+        'a second claim with the same idempotency key must be refused',
+      );
+    });
+
+    await t.test('findByIdempotencyKey returns the record with the camelCase contract', async () => {
+      const record = await store.findByIdempotencyKey(idempotencyKey);
+      assert.ok(record, 'the claimed record must be findable');
+      assert.equal(record.runId, runId);
+      assert.equal(record.jobId, 'it-job');
+      assert.equal(record.status, 'pending');
+      assert.equal(record.attempt, 0);
+      assert.equal(record.maxAttempts, 3);
+      assert.equal(record.error, undefined);
+    });
+
+    await t.test('beginAttempt moves pending to running and refuses while running', async () => {
+      const startedAt = new Date().toISOString();
+      assert.equal(await store.beginAttempt(runId, 1, startedAt), true, 'pending must become running');
+      assert.equal(await store.beginAttempt(runId, 1, startedAt), false, 'a running job cannot begin again');
+      const record = await store.findByIdempotencyKey(idempotencyKey);
+      assert.equal(record?.status, 'running');
+      assert.equal(record?.attempt, 1);
+    });
+
+    await t.test('listRunning sees the running job and only the running jobs', async () => {
+      const running = await store.listRunning();
+      assert.ok(running.some((r) => r.runId === runId), 'the running job must be listed');
+      assert.ok(running.every((r) => r.status === 'running'), 'listRunning must not return other statuses');
+    });
+
+    await t.test('failIfRunning records the failure once and refuses a second time', async () => {
+      const completedAt = new Date().toISOString();
+      assert.equal(await store.failIfRunning(runId, completedAt, 'IT_TEST_FAILURE'), true, 'running must become failed');
+      assert.equal(await store.failIfRunning(runId, completedAt, 'IT_TEST_FAILURE'), false, 'a failed job cannot fail again');
+      const record = await store.findByIdempotencyKey(idempotencyKey);
+      assert.equal(record?.status, 'failed');
+      assert.equal(record?.error, 'IT_TEST_FAILURE');
+      assert.equal(record?.completedAt, completedAt);
+    });
+
+    await t.test('a failed job may retry via beginAttempt and finish via save', async () => {
+      assert.equal(await store.beginAttempt(runId, 2, new Date().toISOString()), true, 'retry after failure must be allowed');
+      const succeeded = { ...baseRecord, status: 'succeeded' as const, attempt: 2, completedAt: new Date().toISOString() };
+      await store.save(succeeded);
+      const record = await store.findByIdempotencyKey(idempotencyKey);
+      assert.equal(record?.status, 'succeeded');
+      assert.equal(record?.attempt, 2);
+      const running = await store.listRunning();
+      assert.equal(running.some((r) => r.runId === runId), false, 'a succeeded job must not be listed as running');
+    });
+  } finally {
+    await sql`DELETE FROM ai_job_runs WHERE run_id = ${runId} OR run_id = ${`${runId}-rival`}`;
+  }
+});

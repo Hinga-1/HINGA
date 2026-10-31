@@ -2,6 +2,16 @@ import { neon } from '@neondatabase/serverless';
 import { JobRunRecord, JobRunStore } from '../types.ts';
 
 /** Persistence adapter for migrated ai_job_runs; schema changes belong in db:migrate. */
+
+/** Postgres timestamp columns arrive as Date objects over the neon driver; the
+ *  JobRunRecord contract promises ISO strings (or undefined for NULL), never the
+ *  "Sat Oct 31 2026..." shape that String(Date) produces. */
+const toIso = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+};
+
 export class NeonJobRunStore implements JobRunStore {
   private readonly sql;
 
@@ -89,9 +99,9 @@ export class NeonJobRunStore implements JobRunStore {
       status: row.status as JobRunRecord['status'],
       attempt: Number(row.attempt),
       maxAttempts: Number(row.max_attempts),
-      createdAt: String(row.created_at),
-      startedAt: row.started_at ? String(row.started_at) : undefined,
-      completedAt: row.completed_at ? String(row.completed_at) : undefined,
+      createdAt: toIso(row.created_at) ?? '',
+      startedAt: toIso(row.started_at),
+      completedAt: toIso(row.completed_at),
       error: row.error_code ? String(row.error_code) : undefined,
     };
   }
