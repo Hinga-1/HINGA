@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { neon } from '@neondatabase/serverless';
 import { config } from '../config.ts';
+import { resolveIntegrationEnv } from '../testing/integration-guard.ts';
 import type { JobRunRecord } from '../types.ts';
 import { NeonJobRunStore } from './neon-job-run-store.ts';
 
@@ -55,8 +56,9 @@ test('toRecord maps snake_case rows with Date objects onto the camelCase ISO con
 
 
 test('Neon JobRunStore persists and reads execution records on an isolated branch', async (t) => {
-  if (!config.databaseUrl || process.env.RUN_NEON_INTEGRATION !== 'true' || process.env.NEON_BRANCH === 'production') {
-    t.skip('requires explicit non-production Neon integration configuration');
+  const integrationDecision = resolveIntegrationEnv(process.env);
+  if (!config.databaseUrl || !integrationDecision.allowed) {
+    t.skip(config.databaseUrl ? integrationDecision.reason : 'DATABASE_URL is not set');
     return;
   }
   const store = new NeonJobRunStore(config.databaseUrl);

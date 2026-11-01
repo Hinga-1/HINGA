@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initDatabaseSchema, testConnection, createItem, getItems, deleteItem, sql } from './db';
 import { NeonExecutionLedger, type SqlClient } from '../src/core/automation/execution-ledger';
+import { resolveIntegrationEnv } from '../src/core/testing/integration-guard';
 
-const canRunIntegration = process.env.RUN_NEON_INTEGRATION === 'true' && process.env.NEON_BRANCH !== 'production';
-const skipReason = canRunIntegration ? undefined : 'Set RUN_NEON_INTEGRATION=true with an explicit non-production NEON_BRANCH';
+const integrationDecision = resolveIntegrationEnv(process.env);
+const canRunIntegration = integrationDecision.allowed;
+const skipReason = canRunIntegration ? undefined : integrationDecision.reason;
 
 test('Neon Postgres - Schema Initialization & Connection', { skip: skipReason }, async (t) => {
   await t.test('initializes database table schema using direct connection', async () => {
