@@ -3,13 +3,22 @@ import assert from 'node:assert/strict';
 import { NeonMemoryStore } from './memory/neon-memory-store.ts';
 import { config } from './config.ts';
 
+// This test writes to a real database, so it only ever runs against the test
+// branch (DATABASE_URL_TEST). DATABASE_URL is production and must stay untouched:
+// if the two are equal we refuse to run rather than risk deleting real memories.
+const testUrl = config.databaseUrlTest;
+
 test('Neon PostgreSQL Persistent Memory Store Integration', async (t) => {
-  if (!config.databaseUrl) {
-    t.skip('DATABASE_URL not set');
+  if (!testUrl) {
+    t.skip('DATABASE_URL_TEST is not set (production DATABASE_URL is never used by tests)');
+    return;
+  }
+  if (testUrl === config.databaseUrl) {
+    t.skip('DATABASE_URL_TEST equals DATABASE_URL (production); refusing to write');
     return;
   }
 
-  const store = new NeonMemoryStore(config.databaseUrl, config.databaseUrlUnpooled);
+  const store = new NeonMemoryStore(testUrl, config.databaseUrlTestUnpooled);
 
   await t.test('initializes ai_memories table and indexes on Neon Postgres', async () => {
     await store.initializeSchema();

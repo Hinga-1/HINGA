@@ -7,6 +7,9 @@ export interface AiSystemConfig {
   env: 'development' | 'production' | 'test';
   databaseUrl: string;
   databaseUrlUnpooled: string;
+  /** Test branch only (e.g. Neon branch `mission-002-test`). Tests never use `databaseUrl`. */
+  databaseUrlTest: string;
+  databaseUrlTestUnpooled: string;
   neonBranch: string;
   geminiApiKey?: string;
   maxExecutionTimeMs: number;
@@ -19,6 +22,8 @@ export const config: AiSystemConfig = {
   env: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development',
   databaseUrl: process.env.DATABASE_URL || '',
   databaseUrlUnpooled: process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL || '',
+  databaseUrlTest: process.env.DATABASE_URL_TEST || '',
+  databaseUrlTestUnpooled: process.env.DATABASE_URL_TEST_UNPOOLED || process.env.DATABASE_URL_TEST || '',
   neonBranch: process.env.NEON_BRANCH || 'production',
   geminiApiKey: process.env.GEMINI_API_KEY || process.env.NEO_API_KEY,
   maxExecutionTimeMs: 30000, // 30s timeout per reasoning task
