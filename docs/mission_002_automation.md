@@ -112,13 +112,14 @@ mafanikio — hivyo mtu anayerudi baada ya siku mbili anajua pa kuanzia bila kus
 Automation haihitaji scheduler ya nje. Kwenye mashine ya modeli:
 
 ```bash
-# crontab -e  — kila siku saa 2 usiku, logi inabaki kwenye .cache
-0 2 * * * cd /opt/hinga && /usr/bin/npx tsx scripts/eval-automation.ts --live --strict >> .cache/eval/cron.log 2>&1
+# crontab -e  — kila saa mbili kwa siku mbili, modeli ya ndani, logi kwenye .cache
+0 20 * * * cd /opt/hinga && /usr/bin/npx tsx scripts/agent-loop.ts --local qwen2.5:7b --hours 48 --every 120 >> .cache/eval/cron.log 2>&1
 ```
 
-Kanuni: `>>` (si `>`) ili historia ibaki; `--strict` ili baseline isiyokuwepo
-isijifishe kama mafanikio; hakuna key kwenye crontab — provider husoma mazingira
-ya mtumiaji.
+Kanuni: `>>` (si `>`) ili historia ibaki; hakuna key kwenye crontab; `--local`
+ili hakuna ombi la nje linatoka. Kwa mzunguko unaojiendesha kwa siku mbili bila
+mtu (pamoja na ripoti na kurekodi gaps), tazama
+[mission_002_agent_loop.md](mission_002_agent_loop.md).
 
 Kwenye CI (GitHub Actions) **lango halikimbii**: runner haina modeli, na kutaka
 ikimbie kungebidi kuweka API ya nje — kinyume cha sharti. Workflow
