@@ -51,8 +51,13 @@ Faili mpya pekee (hakuna faili ya Manus iliyobadilishwa):
 | `src/core/evaluation/suites/hinga-baseline.ts` | 78 | Suite ya tabia v1.0.0 (kesi 6) |
 | `src/core/evaluation/evaluation.test.ts` | 300 | Vipimo 29 |
 | `scripts/eval-baseline.ts` | 62 | Kukimbia suite + lango kutoka terminal |
+| `src/core/evaluation/automation.ts` | 330 | Baseline yenye uthibitisho, uamuzi wa lango, checkpoint |
+| `src/core/evaluation/automation.test.ts` | 200 | Vipimo 10 vya automation |
+| `scripts/eval-automation.ts` | 190 | CLI: run → lango → checkpoint (bila API/mtandao) |
+| `.github/workflows/evaluation.yml` | 38 | CI ya harness (bun + `bun.lock`) |
 | `docs/mission_002_research.md` | — | Utafiti wenye vyanzo |
 | `docs/mission_002_architecture.md` | — | Usanifu na maelekezo |
+| `docs/mission_002_automation.md` | — | Automation, exit codes, cron, artifacts |
 
 ### Uhusiano na schema ya Manus
 
@@ -101,7 +106,22 @@ halisi; hilo linahitaji `GEMINI_API_KEY` (haipo kwenye workspace hii).
 
 ### 3.4 Vipimo vya awali (regression ya jumla)
 
-Vinakimbizwa na `npm test` (tazama sehemu ya 6 kwa matokeo ya mwisho).
+`npm test` → **22/22 pass**, pamoja na jaribio la Neon memory.
+
+### 3.5 Automation (hatua 5 ya Mission 002)
+
+```
+npx tsx --test src/core/evaluation/evaluation.test.ts src/core/evaluation/automation.test.ts
+ℹ tests 39 | pass 39 | fail 0
+
+npx tsx scripts/eval-automation.ts --out .cache/eval
+Gate: no_baseline (exit 1)   ← mock stub haipiti kesi 6/6, kama inavyotakiwa
+Checkpoint: .cache/eval/checkpoint.md
+```
+
+Checkpoint halisi ilirekodi suite, provider, commit, pass rate, kesi zilizoshindwa,
+sababu za lango na hatua zinazofuata. Hakuna key, connection string au maudhui ya
+prompt ndani yake. Automation hii haitumii API, mtandao, wala database.
 
 ---
 
@@ -161,10 +181,12 @@ built:
 checks:
   - command: npx tsc --noEmit
     result: pass
-  - command: npx tsx --test src/core/evaluation/evaluation.test.ts
-    result: 29/29 pass
-  - command: npx tsx scripts/eval-baseline.ts
-    result: pass rate 0.0% (mock stub), gate no_baseline, exit 1 (expected)
+  - command: npx tsx --test src/core/evaluation/evaluation.test.ts src/core/evaluation/automation.test.ts
+    result: 39/39 pass
+  - command: npm test
+    result: 22/22 pass
+  - command: npx tsx scripts/eval-automation.ts
+    result: mock run, gate no_baseline, exit 1 (expected), checkpoint written
 not_done:
   - Neon live store test (needs DATABASE_URL_TEST on non-production branch)
   - wiring into AiCoreSystem / CLI (deferred to avoid Manus conflict)

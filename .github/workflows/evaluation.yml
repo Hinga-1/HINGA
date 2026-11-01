@@ -1,0 +1,41 @@
+name: Evaluation harness
+
+# This workflow verifies the harness, not a model.
+#
+# The promotion gate needs a real model to be meaningful, and this project runs
+# its models on local hardware (no hosted API). GitHub runners therefore cannot
+# exercise the gate: they only run the deterministic tests and the typecheck.
+# The gate itself runs where the model runs:
+#   npx tsx scripts/eval-automation.ts --live --update-baseline
+# and afterwards
+#   npx tsx scripts/eval-automation.ts --live --strict
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'mission-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Evaluation unit tests
+        run: bunx tsx --test src/core/evaluation/evaluation.test.ts src/core/evaluation/automation.test.ts
+      - name: Typecheck
+        run: bunx tsc --noEmit
