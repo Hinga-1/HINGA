@@ -38,6 +38,8 @@ npx tsx scripts/eval-automation.ts --out /var/lib/hinga/eval
 | Chaguo | Maana |
 |---|---|
 | `--live` | Tumia provider halisi; ikikosekana key, **exit 2** bila ombi lolote |
+| `--local MODEL` | Tumia modeli ya ndani (Ollama); tazama [mission_002_local_model.md](mission_002_local_model.md) |
+| `--local-url` / `--local-api` | URL na aina ya server ya ndani (`ollama` au `openai`) |
 | `--strict` | Baseline ikikosekana, hii ni kosa (exit 1), si taarifa |
 | `--update-baseline` | Hifadhi baseline **baada ya run iliyopita** tu |
 | `--allow-mock-baseline` | Ruhusu baseline ya mock kwa makusudi (haishauriwi) |

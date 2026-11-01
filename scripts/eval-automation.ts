@@ -9,7 +9,8 @@
  *   npx tsx scripts/eval-automation.ts                       # local, informational
  *   npx tsx scripts/eval-automation.ts --strict              # CI: no baseline = fail
  *   npx tsx scripts/eval-automation.ts --update-baseline     # record after a passing run
- *   npx tsx scripts/eval-automation.ts --live                # real provider (needs key)
+ *   npx tsx scripts/eval-automation.ts --live                # hosted provider (needs key)
+ *   npx tsx scripts/eval-automation.ts --local qwen2.5:7b    # model running on this machine
  *   npx tsx scripts/eval-automation.ts --out .cache/eval     # artifact directory
  *
  * Exit codes: 0 = pass/informational, 1 = failed or regressed, 2 = configuration error.
@@ -33,6 +34,9 @@ import {
 import type { BaselineFile } from '../src/core/evaluation/automation.ts';
 import { MockModelProvider } from '../src/core/providers/mock-provider.ts';
 import { GeminiModelProvider } from '../src/core/providers/gemini-provider.ts';
+import { LocalModelProvider } from '../src/core/evaluation/local-model.ts';
+import type { LocalFlavour } from '../src/core/evaluation/local-model.ts';
+import type { AiModelProvider } from '../src/core/types.ts';
 import { config } from '../src/core/config.ts';
 
 interface Options {
@@ -41,6 +45,9 @@ interface Options {
   live: boolean;
   allowMockBaseline: boolean;
   out: string;
+  localModel: string | null;
+  localUrl: string | null;
+  localFlavour: LocalFlavour;
 }
 
 function parseOptions(argv: string[]): Options {
@@ -50,6 +57,9 @@ function parseOptions(argv: string[]): Options {
     live: false,
     allowMockBaseline: false,
     out: '.cache/eval',
+    localModel: null,
+    localUrl: null,
+    localFlavour: 'ollama',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -57,12 +67,30 @@ function parseOptions(argv: string[]): Options {
     else if (arg === '--update-baseline') options.updateBaseline = true;
     else if (arg === '--live') options.live = true;
     else if (arg === '--allow-mock-baseline') options.allowMockBaseline = true;
-    else if (arg === '--out') {
+    else if (arg === '--local') {
+      const value = argv[++i];
+      if (!value) throw new Error('--local inahitaji jina la modeli (mf. qwen2.5:7b).');
+      options.localModel = value;
+    } else if (arg === '--local-url') {
+      const value = argv[++i];
+      if (!value) throw new Error('--local-url inahitaji URL (mf. http://127.0.0.1:11434).');
+      options.localUrl = value;
+    } else if (arg === '--local-api') {
+      const value = argv[++i];
+      if (value !== 'ollama' && value !== 'openai') {
+        throw new Error('--local-api inakubali "ollama" au "openai" tu.');
+      }
+      options.localFlavour = value === 'openai' ? 'openai-compatible' : 'ollama';
+    } else if (arg === '--out') {
       const value = argv[++i];
       if (!value) throw new Error('--out inahitaji njia ya saraka.');
       options.out = value;
     } else if (arg === '--help' || arg === '-h') {
-      console.log('Tumia: npx tsx scripts/eval-automation.ts [--strict] [--update-baseline] [--live] [--allow-mock-baseline] [--out dir]');
+      console.log(
+        'Tumia: npx tsx scripts/eval-automation.ts [--strict] [--update-baseline] ' +
+          '[--live | --local MODEL [--local-url URL] [--local-api ollama|openai]] ' +
+          '[--allow-mock-baseline] [--out dir]'
+      );
       process.exit(0);
     } else {
       throw new Error(`Chaguo lisilojulikana: ${arg}`);
@@ -102,14 +130,34 @@ function writeFile(path: string, content: string): void {
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
 
+  if (options.live && options.localModel) {
+    console.error('✗ --live na --local haviwezi kutumika pamoja. Chagua kimoja.');
+    process.exit(2);
+  }
   if (options.live && !config.geminiApiKey) {
     console.error('✗ --live imetumika lakini hakuna provider key kwenye mazingira. Hakuna ombi lililotumwa.');
     process.exit(2);
   }
 
-  const provider = options.live && config.geminiApiKey
-    ? new GeminiModelProvider(config.geminiApiKey)
-    : new MockModelProvider();
+  let provider: AiModelProvider;
+  if (options.localModel) {
+    provider = new LocalModelProvider({
+      model: options.localModel,
+      baseUrl: options.localUrl ?? undefined,
+      flavour: options.localFlavour,
+    });
+    if (!(await provider.isAvailable())) {
+      console.error(
+        `✗ Modeli ya ndani haipatikani (${options.localModel}). Hakuna kurudi kwenye mock: ` +
+          'anzisha Ollama au llama.cpp kwanza, kisha rudia. Hakuna ombi la nje lililotumwa.'
+      );
+      process.exit(2);
+    }
+  } else if (options.live && config.geminiApiKey) {
+    provider = new GeminiModelProvider(config.geminiApiKey);
+  } else {
+    provider = new MockModelProvider();
+  }
   const providerIsMock = provider.name.toLowerCase().includes('mock');
 
   console.log(`[1/5] Suite: ${HINGA_BASELINE_SUITE.id} v${HINGA_BASELINE_SUITE.version}`);
@@ -157,7 +205,7 @@ async function main(): Promise<void> {
     run,
     decision,
     providerId: provider.name,
-    modelId: options.live ? 'live-provider' : 'mock',
+    modelId: options.localModel ?? (options.live ? 'live-provider' : 'mock'),
     providerIsMock,
     codeCommit: tryGit('git rev-parse --short HEAD'),
     branch: tryGit('git rev-parse --abbrev-ref HEAD'),
