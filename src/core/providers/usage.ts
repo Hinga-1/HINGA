@@ -2,6 +2,8 @@ import { ModelTier, TokenUsage } from '../types.ts';
 
 export interface PriceSnapshot {
   version: string;
+  /** Model ambayo bei hii inamhusu; kutokuwepo kwake kuna maana snapshot hii ni generic kwa provider. */
+  modelId?: string;
   source: string;
   effectiveAt: string;
   inputUsdPerMillionTokens: number;
