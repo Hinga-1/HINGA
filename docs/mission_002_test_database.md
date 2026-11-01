@@ -66,8 +66,16 @@ npx tsx --test src/core/neon-memory.test.ts src/core/evaluation/store-live.test.
 
 Bila URL: `skipped 2`. Ukiweka URL: vipimo vinakimbia dhidi ya tawi la majaribio pekee.
 
-Store live inahitaji migration ya Mission 003:
+Store live inahitaji migration ya Mission 003. Faili hilo liko kwenye tawi la Manus
+(`mission-003-*`), sio hapa — halikopiwi, linatumika tu. Hakuna `psql` kwenye
+mazingira haya, hivyo tunaenda kwa HTTP driver ya Neon:
 
 ```bash
-psql "$DATABASE_URL_TEST" -f db/migrations/002_ai_core_state.sql
+git show origin/manus-003:db/migrations/002_ai_core_state.sql > .cache/002_ai_core_state.sql
+node scripts/apply-test-migration.mjs .cache/002_ai_core_state.sql
 ```
+
+Script hiyo inakataa kabisa kama `DATABASE_URL_TEST` haipo au ni sawa na
+`DATABASE_URL`. Migration ni `CREATE ... IF NOT EXISTS`, hivyo kurudia ni salama.
+
+Baada ya hapo vipimo vyote 10 vinakimbia: `pass 10`, `skipped 0`.

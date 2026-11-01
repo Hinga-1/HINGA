@@ -73,7 +73,8 @@ test('NeonEvaluationStore (live, test branch only)', async (t) => {
 
   await t.test('saves a run and reads the same suite back', async () => {
     const id = await store.saveRun(run, { providerId: 'local-provider', modelId: 'test-fixture' });
-    assert.equal(id, `eval_${suiteId}_live-1_${stamp}`);
+    // runId() derives the stamp from completedAt, not startedAt.
+    assert.equal(id, `eval_${suiteId}_live-1_${stamp + 1_000}`);
 
     const summary = await store.latestSummary(suiteId);
     assert.ok(summary, 'run inapaswa kusomwa');
