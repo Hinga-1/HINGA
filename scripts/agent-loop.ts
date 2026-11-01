@@ -53,6 +53,7 @@ interface CycleRecord {
   exitCode: number;
   unavailable: boolean;
   failing: string[];
+  reasons: string[];
   gapsRecorded: number;
   note?: string;
 }
@@ -148,6 +149,7 @@ function readLatestRun(outDir: string): {
   provider?: string;
   summary?: { passRate: number; weightedScore: number; cases: { caseId: string; passed: boolean }[] };
   gate?: string;
+  reasons?: string[];
 } | null {
   const runsDir = join(outDir, 'runs');
   if (!existsSync(runsDir)) return null;
@@ -299,6 +301,7 @@ async function main(): Promise<void> {
       exitCode: code,
       unavailable,
       failing,
+      reasons: run?.reasons ?? [],
       gapsRecorded: 0,
       note: unavailable ? 'Modeli ya ndani haipatikani — duru hii haikupima kitu.' : undefined,
     };

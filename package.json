@@ -13,6 +13,8 @@
     "ai:task": "tsx src/cli.ts task",
     "ai:learn": "tsx src/cli.ts learn",
     "ai:rollback": "tsx src/cli.ts rollback",
+    "eval:loop": "tsx scripts/agent-loop.ts",
+    "eval:status": "tsx scripts/agent-status.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

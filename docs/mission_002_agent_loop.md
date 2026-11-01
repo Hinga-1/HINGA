@@ -96,7 +96,18 @@ WantedBy=default.target
 systemctl --user enable --now hinga-loop
 ```
 
-## Kusoma matokeo ukirudi
+## Kusoma matokeo ukirudi — amri moja
+
+```bash
+npx tsx scripts/agent-status.ts
+```
+
+Inajibu maswali mawili tu, kwa mpangilio: **kimefanyika nini** (kipindi, duru,
+modeli, mwenendo, gaps) na **kimefeli nini** (kesi zinazoshindwa na sababu za
+lango). Ni read-only: haigusi modeli, database wala key, na inafanya kazi hata
+mzunguko bado unaendelea.
+
+Ripoti kamili kama faili:
 
 ```bash
 cat .cache/eval/agent-report.md
