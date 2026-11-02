@@ -553,3 +553,19 @@ Mabadiliko: `src/core/testing/integration-guard.ts` (module safi, haifikii datab
 Ushahidi: `npm test` (config ya unit) - 62 passed, 0 failed, 2 skipped; kwenye config ya integration (RUN_NEON_INTEGRATION=true, NEON_BRANCH=mission-003-test-20261030, DATABASE_URL=ep-dawn-feather-b9v9sfi1, imehakikiwa si production kabla ya kuendelea kwa kulinganisha hosts) - 67 passed, 0 failed, 0 skipped; `npm run test:integration` - 26 passed, 0 failed kwenye test branch; `npm run lint` (`tsc --noEmit`) - clean; `npm run build` - ok; `npm run db:migration-check` - migrations 001-004 valid; post-run probe: `ai_job_runs` 0, `hinga_executions` 0, `hinga_worker_leases` 0 (`neon_items` 4 na `ai_memories` 3 ni seed data ya kabla ya mission, hazikuguswa). Hakuna production SQL, DDL, role, grant, RLS, backup, restore au live model call iliyofanywa; push ni kwenye `mission-003-independent-work` pekee; `main` inabaki `84b87bbc`.
 
 Kilichobaki baada ya hatua hii: kushikisha `UsageLedger` kwenye call sites za orchestrator/reasoning/curriculum na per-task budget caps (hatua ndogo ijayo), human review ya PR #1, na roles/grants/RLS zinazosubiri idhini wazi.
+
+## Uthibitisho wa execution ya 2026-11-02 — usage ya kila orchestrator task
+
+Pengo la wazi kwenye report (`UsageLedger ... haijaunganishwa bado kwenye kila orchestrator task`) limefungwa:
+
+- `AiCoreSystem.initialize()` sasa inatumia `UsageLedger` moja inayopitishwa kwa `GeminiModelProvider` (kila attempt: success, fallback, timeout, error) na kwa `AgentOrchestrator`.
+- `AgentOrchestrator.executeTask()` inapima delta ya attempts za task hiyo pekee (ledger ni append-only) na kuiweka kwenye `AgentTask.usage`: attemptCount, totalTokens na `costUsd` **tu** ikiwa angalau attempt moja ina bei halisi. Hakuna cost ya kubuni.
+- Task iliyoanguka pia ina usage yake (attempt ya mwisho kabla ya kosa ni taarifa ya "nini kilichofeli"), na bila ledger au bila attempts, `usage` inabaki `undefined`.
+- Mock provider hawarekodi kwenye ledger, kwa sababu attempts za mock si spend halisi.
+
+Ushahidi wa ndani (sandbox):
+- `npm test`: 68 tests, 66 pass, 0 fail, 2 skipped (live-DB stubs)
+- `npm run lint`: clean; `npm run build`: ok; `npm run db:migration-check`: 001-004 valid
+- `npm run test:integration` kwenye test branch `mission-003-test-20261030` (ep-dawn-feather, non-production): 26/26 pass, cleanup rows 0
+
+Wafuatiliaji: bei za live provider bado hazingiwi automatically (zinahitaji feed ya bei iliyothibitishwa), na roles/RLS bado ni blocker ya idhini ya wazi.

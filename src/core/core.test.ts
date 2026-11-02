@@ -205,3 +205,117 @@ test('AI Foundation Core - Subsystem Tests (Mission 001)', async (t) => {
     assert.equal(health.subsystems.safety.status, 'ok');
   });
 });
+
+test('Agent Orchestrator - per-task usage attribution (Mission 003)', async (t) => {
+  const { AgentOrchestrator } = await import('./orchestrator/orchestrator.ts');
+  const { UsageLedger } = await import('./providers/usage.ts');
+  const { SafetyGuardrails } = await import('./safety/guardrails.ts');
+  const { MemoryManager: MemMgr } = await import('./memory/memory-manager.ts');
+  const { InMemoryStore: MemStore } = await import('./memory/in-memory-store.ts');
+  const { IdentityManager: IdentMgr } = await import('./identity/identity-manager.ts');
+  const { ReasoningEngine: ReasonEng } = await import('./reasoning/engine.ts');
+
+  await t.test('A. attempts zilizopimwa bei zinahesabiwa kwa task moja', async () => {
+    const ledger = new UsageLedger();
+    const mock = new MockModelProvider();
+    let calls = 0;
+    // Provider anayerekodi kila call kwenye ledger moja, kama Gemini halisi.
+    const provider = {
+      id: mock.id,
+      name: mock.name,
+      isAvailable: () => mock.isAvailable(),
+      generateText: async (request: any) => {
+        calls += 1;
+        ledger.record({
+          requestId: `req_${calls}`,
+          providerId: 'stub',
+          modelId: 'stub-model',
+          tier: request.tier,
+          startedAt: new Date().toISOString(),
+          usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 },
+          usageSource: 'estimated',
+          estimatedCostUsd: 0.02,
+          priceVersion: 'snap-1',
+          fallbackUsed: false,
+          status: 'succeeded',
+        });
+        return mock.generateText(request);
+      },
+    };
+    const identity = new IdentMgr();
+    const memory = new MemMgr(new MemStore());
+    const orchestrator = new AgentOrchestrator(
+      provider as any,
+      identity,
+      new ReasonEng(provider as any, memory, identity),
+      memory,
+      new SafetyGuardrails(),
+      ledger
+    );
+
+    const task = await orchestrator.executeTask('Chambua hatua za ujenzi wa database');
+    assert.equal(task.status, 'completed');
+    assert.equal(calls, 2, 'reasoning + critic pass = attempts mbili');
+    assert.ok(task.usage, 'usage lazima ibanwe kwenye task');
+    assert.equal(task.usage!.attemptCount, 2);
+    assert.equal(task.usage!.totalTokens, 300);
+    assert.equal(task.usage!.costUsd, 0.04);
+    // Ledger yenyewe inabaki na historia nzuri, task ina delta yake pekee.
+    assert.equal(ledger.getAttempts().length, 2);
+  });
+
+  await t.test('B. attempt iliyoanguka bila bei: usage inaonekana, cost haibuniwi', async () => {
+    const ledger = new UsageLedger();
+    const provider = {
+      id: 'boom',
+      name: 'Boom Provider',
+      isAvailable: async () => true,
+      generateText: async () => {
+        ledger.record({
+          requestId: 'req_1',
+          providerId: 'boom',
+          modelId: 'boom-model',
+          tier: 'balanced',
+          startedAt: new Date().toISOString(),
+          usageSource: 'unknown',
+          fallbackUsed: false,
+          status: 'failed',
+        });
+        throw new Error('provider imekufa');
+      },
+    };
+    const identity = new IdentMgr();
+    const memory = new MemMgr(new MemStore());
+    const orchestrator = new AgentOrchestrator(
+      provider as any,
+      identity,
+      new ReasonEng(provider as any, memory, identity),
+      memory,
+      new SafetyGuardrails(),
+      ledger
+    );
+
+    const task = await orchestrator.executeTask('Chambua tatizo');
+    assert.equal(task.status, 'failed');
+    assert.ok(task.usage, 'attempt iliyoanguka lazima ionekane kwenye task');
+    assert.equal(task.usage!.attemptCount, 1);
+    assert.equal(task.usage!.totalTokens, 0);
+    assert.equal(task.usage!.costUsd, undefined, 'cost haibuniwi bila bei halisi');
+  });
+
+  await t.test('C. bila ledger hakuna usage ya kubuni', async () => {
+    const mock = new MockModelProvider();
+    const identity = new IdentMgr();
+    const memory = new MemMgr(new MemStore());
+    const orchestrator = new AgentOrchestrator(
+      mock,
+      identity,
+      new ReasonEng(mock, memory, identity),
+      memory,
+      new SafetyGuardrails()
+    );
+    const task = await orchestrator.executeTask('Chambua hatua za ujenzi wa database');
+    assert.equal(task.status, 'completed');
+    assert.equal(task.usage, undefined);
+  });
+});

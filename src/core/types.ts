@@ -153,6 +153,19 @@ export interface AgentTask {
   error?: string;
   createdAt: string;
   completedAt?: string;
+  /** Attempt za provider zilizorekodiwa na ledger wakati wa task hii pekee. */
+  usage?: TaskUsage;
+}
+
+/**
+ * Muhtasari wa matumizi ya model kwa task moja, uliopimwa kutoka UsageLedger
+ * kuanzia wakati task ilipoanza. `costUsd` ipo tu ikiwa angalau attempt moja
+ * ina bei halisi; hakuna thamani ya kubuni.
+ */
+export interface TaskUsage {
+  attemptCount: number;
+  totalTokens: number;
+  costUsd?: number;
 }
 
 // ----------------------------------------------------

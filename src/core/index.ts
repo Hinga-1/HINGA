@@ -2,6 +2,7 @@ import { config } from './config.ts';
 import { AiModelProvider, JobRunStore, SystemHealthReport } from './types.ts';
 import { MockModelProvider } from './providers/mock-provider.ts';
 import { GeminiModelProvider } from './providers/gemini-provider.ts';
+import { UsageLedger } from './providers/usage.ts';
 import { IdentityManager } from './identity/identity-manager.ts';
 import { InMemoryStore } from './memory/in-memory-store.ts';
 import { NeonMemoryStore } from './memory/neon-memory-store.ts';
@@ -25,6 +26,8 @@ export class AiCoreSystem {
   readonly automation: AutomationEngine;
   readonly observability: ObservabilityEngine;
   readonly provider: AiModelProvider;
+  /** Ledger moja ya attempts ya provider; orchestrator anaitumia kupima kila task. */
+  readonly usageLedger: UsageLedger;
 
   private isNeonConnected: boolean = false;
 
@@ -32,9 +35,11 @@ export class AiCoreSystem {
     provider: AiModelProvider,
     memoryStore: any,
     isNeon: boolean,
+    usageLedger: UsageLedger,
     automationRunStore?: JobRunStore
   ) {
     this.provider = provider;
+    this.usageLedger = usageLedger;
     this.isNeonConnected = isNeon;
 
     // A. Identity & Personality
@@ -59,7 +64,8 @@ export class AiCoreSystem {
       this.identity,
       this.reasoning,
       this.memory,
-      this.safety
+      this.safety,
+      this.usageLedger
     );
 
     // G. Automation Engine
@@ -85,11 +91,14 @@ export class AiCoreSystem {
    */
   static async initialize(options?: { forceMockProvider?: boolean; forceInMemory?: boolean }): Promise<AiCoreSystem> {
     // 1. Select Model Provider
+    // 0. Shared usage ledger: kila attempt ya provider halisi inarekodiwa hapa.
+    // Mock provider hawarekodi - attempts za mock si spend halisi.
+    const usageLedger = new UsageLedger();
     let provider: AiModelProvider;
     if (options?.forceMockProvider || !config.geminiApiKey) {
       provider = new MockModelProvider();
     } else {
-      const gemini = new GeminiModelProvider(config.geminiApiKey);
+      const gemini = new GeminiModelProvider(config.geminiApiKey, { ledger: usageLedger });
       const available = await gemini.isAvailable();
       provider = available ? gemini : new MockModelProvider();
     }
@@ -114,7 +123,7 @@ export class AiCoreSystem {
       memoryStore = new InMemoryStore();
     }
 
-    const system = new AiCoreSystem(provider, memoryStore, isNeon, automationRunStore);
+    const system = new AiCoreSystem(provider, memoryStore, isNeon, usageLedger, automationRunStore);
     if (isNeon) {
       const reconciledRuns = await system.automation.reconcileInterruptedRuns();
       if (reconciledRuns > 0) {
