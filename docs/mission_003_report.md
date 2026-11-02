@@ -614,3 +614,21 @@ Report na code vilikaguliwa dhidi ya priority zilizobaki. Hatua za kiufundi sala
 
 ### Blocker na uamuzi wa execution
 Sikufanya production operation, migration apply, roles, grants, RLS, backup, restore, merge ya `main`, fine-tuning, au live/paid model call. Kwa sababu blocker kuu zinahitaji human review au idhini ya wazi, schedule haizimwi bado: mission haijatangazwa kuwa imekamilika bila PR review na uamuzi wa policy kuhusu least privilege/RLS. Execution inayofuata haipaswi kurudia implementation hii; inapaswa kusubiri mabadiliko ya approval/review au priority mpya salama.
+
+
+## Uthibitisho wa execution ya 2026-11-02T17:19Z — hakuna hatua salama mpya ya code
+
+Katika execution hii nilikagua PR #1 na branch ya kazi. PR iko **OPEN** na **CLEAN**, inatoka `mission-003-independent-work` kwenda `main`, na CI `verify` ya mwisho iliyopo GitHub ilikuwa **SUCCESS** kwenye commit `2e6ed7645983dc789860e6cf4c7bd6d7cc323db2`. Working tree ilikuwa clean kabla ya checkpoint; `main` bado iko kwenye `84b87bbc` na hakuna merge iliyofanywa.
+
+Nilichagua hatua moja ndogo salama: **verification/report checkpoint**. Report na code vilikaguliwa dhidi ya priority zilizobaki. Hakuna implementation mpya iliyobuniwa kwa sababu hatua za kiufundi zilizo salama tayari zimefungwa kwenye branch hii; zilizobaki ni human review/sign-off ya PR #1, roles/grants/RLS na runtime least privilege ambazo playbook inazuia bila idhini ya wazi, na price refresh ya baadaye kutoka chanzo kilichothibitishwa. Kurudia implementation iliyokamilika au kubuni lease/policy architecture mpya bila idhini kungekuwa kinyume cha playbook.
+
+Matokeo halisi ya verification:
+- `npm ci` — **passed** kutoka lockfile; lockfile haikubadilishwa.
+- `npm test` — **74 passed, 0 failed, 2 skipped**; skips zilikuwa Neon integrations kwa sababu `DATABASE_URL` haikuwekwa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native` na `__dirname`.
+- `npm run db:migration-check` — **passed**; migrations `001`, `002`, `003`, `004` ni valid.
+- `npm run test:integration` — **0 passed, 0 failed, 5 skipped**; guard ilikataa kujaribu bila `RUN_NEON_INTEGRATION=true` na `DATABASE_URL`, hivyo hakuna connection attempt iliyofanywa.
+- Neon MCP read-only `list_branches` na `get_database_tables` — **passed** kwenye safe branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`); branch iko `ready`, si default, na ina tables za migrations 001–004 pamoja na `schema_migrations`. Production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hakuna production SQL, migration apply, role, grant, RLS, backup, restore, fine-tuning, paid/live model call au merge ya `main` iliyofanywa. Hakuna secret iliyoandikwa kwenye repo au report. Mission **haijakamilika**, scheduler haijazimwa, na madai ya distributed exactly-once, production tenant isolation, factual verification au backup/restore hayafanywi. Hatua inayofuata inahitaji human review/approval au connection configuration iliyoidhinishwa ya safe branch; execution hii haitarudia implementation hii.
