@@ -581,3 +581,18 @@ Ushahidi wa unit suite (`src/core/core.test.ts`, tests 3 mpya D/E/F): bajeti ya 
 Matokeo halisi ya uthibitisho: `npm test` (config ya unit) - 71 tests, 69 passed, 0 failed, 2 skipped; `npm test` (config ya integration: RUN_NEON_INTEGRATION=true, NEON_BRANCH=mission-003-test-20261030, endpoint ep-dawn-feather, imehakikiwa si production) - 74 passed, 0 failed, 0 skipped; `npm run test:integration` - 26 passed, 0 failed kwenye test branch; `npm run lint` (`tsc --noEmit`) - clean; `npm run build` - ok; `npm run db:migration-check` - migrations 001-004 valid. Post-run probe: `ai_job_runs` 0, `hinga_executions` 0, `hinga_worker_leases` 0. Hakuna DDL, role, grant, RLS, production SQL, live model call wala merge iliyofanywa; push ni kwenye `mission-003-independent-work` pekee; `main` inabaki `84b87bbc`.
 
 Kilichobaki: human review ya PR #1 na roles/grants/RLS (zinasubiri idhini wazi ya mmiliki). Hatua za kiufundi za mission 003 zimekamilika kanda ya usalama na accounting.
+
+## Checkpoint 2026-11-02T02:07Z - bei halisi kwa kila attempt: price feed imeunganishwa
+
+Execution `exec_1793584955706_3129b7` (attempt 5) imefunga wafuatiliaji wa mwisho wa accounting: ledger ilikuwa inarekodi attempts na orchestrator ilikuwa inapima per-task usage, lakini hakuna chanzo cha bei kwenye njia halisi (`src/core/index.ts` iliundwa bila `prices`), hivyo kila `estimatedCostUsd` ilikuwa undefined, `TaskUsage.costUsd` haikuweza kuweka thamani, na per-task budget cap ilikuwa haitoziweza kuwaka kamwe.
+
+Mabadiliko:
+
+- `src/core/providers/committed-prices.json`: pigo la bei zilizothibitishwa kutoka chanzo halisi - OpenRouter `/api/v1/models` (bei za orodha za Google), zilizohakikiwa live wakati wa execution hii: `gemini-2.5-flash` 0.30 USD/M input, 2.50 USD/M output; `gemini-2.5-pro` 1.25 USD/M input, 10.00 USD/M output. Kila snapshot ina `source`, `effectiveAt` na `version`; hakuna bei iliyoibuniwa.
+- `src/core/providers/price-feed.ts`: `loadCommittedPrices()` inathibitisha contract ya kila snapshot kabla ya kupitishwa kwa provider (linapata model zote za `MODEL_ROUTES`); `mapOpenRouterPrices()` inageuza matokeo ya API ya OpenRouter kuwa snapshots (per-token -> per-million) na inakataa payload isiyo sahihi kwa sauti - msingi wa kusasisha bei baadaye bila kubuni.
+- `src/core/index.ts`: `GeminiModelProvider` sasa inapata `prices: loadCommittedPrices()` pamoja na ledger, hivyo kila attempt ya provider halisi ina cost halisi na per-task budget cap ina nguvu ya kweli.
+- `src/core/providers/price-feed.test.ts` (tests 5) imeongezwa kwenye `test:unit`; `tsconfig.json` imepata `resolveJsonModule`.
+
+Ushahidi: `npm test` - 76 tests, 74 passed, 0 failed, 2 skipped (live-DB stubs); `npm run lint` (`tsc --noEmit`) - clean; `npm run build` - ok; `npm run db:migration-check` - migrations 001-004 valid; `npm run test:integration` kwenye test branch `mission-003-test-20261030` (endpoint `ep-dawn-feather-b9v9sfi1`, imehakikiwa si production kwa kulinganisha hosts) - 26 passed, 0 failed; probe baada ya run: `ai_job_runs` 0, `hinga_executions` 0, `hinga_worker_leases` 0. Hakuna production SQL, DDL, role, grant, RLS, backup, restore wala live model call; push ni kwenye `mission-003-independent-work` pekee; `main` inabaki `84b87bbc`.
+
+Kilichobaki: human review ya PR #1, roles/grants/RLS (zinahitaji idhini wazi ya utumiaji wa production), na kusasisha bei kunakorudiwa kwa mikono (chanzo kimeshajaribiwa, mchakato wa refresh ni hatua ya baadaye).

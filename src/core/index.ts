@@ -3,6 +3,7 @@ import { AiModelProvider, JobRunStore, SystemHealthReport } from './types.ts';
 import { MockModelProvider } from './providers/mock-provider.ts';
 import { GeminiModelProvider } from './providers/gemini-provider.ts';
 import { UsageLedger } from './providers/usage.ts';
+import { loadCommittedPrices } from './providers/price-feed.ts';
 import { IdentityManager } from './identity/identity-manager.ts';
 import { InMemoryStore } from './memory/in-memory-store.ts';
 import { NeonMemoryStore } from './memory/neon-memory-store.ts';
@@ -98,7 +99,12 @@ export class AiCoreSystem {
     if (options?.forceMockProvider || !config.geminiApiKey) {
       provider = new MockModelProvider();
     } else {
-      const gemini = new GeminiModelProvider(config.geminiApiKey, { ledger: usageLedger });
+      const gemini = new GeminiModelProvider(config.geminiApiKey, {
+        ledger: usageLedger,
+        // Bei zilizothibitishwa (repo-committed): bila hizi, kila attempt inabaki bila cost
+        // na per-task budget cap haitoziweza kuwaka.
+        prices: loadCommittedPrices(),
+      });
       const available = await gemini.isAvailable();
       provider = available ? gemini : new MockModelProvider();
     }
