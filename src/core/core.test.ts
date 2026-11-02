@@ -318,4 +318,103 @@ test('Agent Orchestrator - per-task usage attribution (Mission 003)', async (t) 
     assert.equal(task.status, 'completed');
     assert.equal(task.usage, undefined);
   });
+
+  const buildPricedOrchestrator = (ledger: InstanceType<typeof UsageLedger>) => {
+    const mock = new MockModelProvider();
+    let calls = 0;
+    const provider = {
+      id: mock.id,
+      name: mock.name,
+      isAvailable: () => mock.isAvailable(),
+      generateText: async (request: any) => {
+        calls += 1;
+        ledger.record({
+          requestId: `req_${calls}`,
+          providerId: 'stub',
+          modelId: 'stub-model',
+          tier: request.tier,
+          startedAt: new Date().toISOString(),
+          usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 },
+          usageSource: 'estimated',
+          estimatedCostUsd: 0.02,
+          priceVersion: 'snap-1',
+          fallbackUsed: false,
+          status: 'succeeded',
+        });
+        return mock.generateText(request);
+      },
+    };
+    const identity = new IdentMgr();
+    const memory = new MemMgr(new MemStore());
+    const orchestrator = new AgentOrchestrator(
+      provider as any,
+      identity,
+      new ReasonEng(provider as any, memory, identity),
+      memory,
+      new SafetyGuardrails(),
+      ledger
+    );
+    return { orchestrator, getCalls: () => calls };
+  };
+
+  await t.test('D. bajeti ya task iliyoisha: critic pass inarukwa, ushahidi unabaki', async () => {
+    const { orchestrator, getCalls } = buildPricedOrchestrator(new UsageLedger());
+    // Reasoning pekee inagharimu 0.02, bajeti ni 0.02: critic pass ya hiari inakata.
+    const task = await orchestrator.executeTask('Chambua hatua za ujenzi wa database', undefined, {
+      budgetUsd: 0.02,
+    });
+    assert.equal(task.status, 'completed');
+    assert.equal(getCalls(), 1, 'critic pass isiangukie kwenye mtandao tena');
+    assert.ok(task.usage, 'usage ya task lazima ibanwe');
+    assert.equal(task.usage!.attemptCount, 1);
+    assert.equal(task.usage!.costUsd, 0.02);
+    assert.equal(task.usage!.budgetUsd, 0.02);
+    assert.equal(task.usage!.budgetExceeded, true, 'kuvuka bajeti lazikaonekane kwenye usage');
+    assert.ok(task.result!.includes('bajeti'), 'matokeo lazima yaeleze kwa nini critic haikufanyika');
+    assert.ok(!task.result!.includes('[Uhakiki wa Critic]'));
+  });
+
+  await t.test('E. bajeti kubwa: critic pass inaendelea, budgetExceeded haipo', async () => {
+    const { orchestrator, getCalls } = buildPricedOrchestrator(new UsageLedger());
+    const task = await orchestrator.executeTask('Chambua hatua za ujenzi wa database', undefined, {
+      budgetUsd: 0.1,
+    });
+    assert.equal(task.status, 'completed');
+    assert.equal(getCalls(), 2, 'reasoning + critic pass zote zinapita chini ya bajeti');
+    assert.equal(task.usage!.budgetUsd, 0.1);
+    assert.equal(task.usage!.budgetExceeded, undefined);
+    assert.equal(task.usage!.costUsd, 0.04);
+    assert.ok(task.result!.includes('[Uhakiki wa Critic]'));
+  });
+
+  await t.test('F. bajeti bila ledger haiutekelezwi kwa kukisia', async () => {
+    const mock = new MockModelProvider();
+    let calls = 0;
+    const provider = {
+      id: mock.id,
+      name: mock.name,
+      isAvailable: () => mock.isAvailable(),
+      generateText: async (request: any) => {
+        calls += 1;
+        return mock.generateText(request);
+      },
+    };
+    const identity = new IdentMgr();
+    const memory = new MemMgr(new MemStore());
+    const orchestrator = new AgentOrchestrator(
+      provider as any,
+      identity,
+      new ReasonEng(provider as any, memory, identity),
+      memory,
+      new SafetyGuardrails()
+    );
+    const task = await orchestrator.executeTask('Chambua hatua za ujenzi wa database', undefined, {
+      budgetUsd: 0.000001,
+    });
+    assert.equal(task.status, 'completed');
+    // Hakuna kipimo cha spend bila ledger: hakuna kukata kwa kukisia, hakuna usage ya kubuni.
+    assert.equal(calls, 2, 'critic pass inaendelea kwa sababu spend haiwezekani kupimwa');
+    assert.equal(task.usage, undefined);
+    assert.ok(task.result!.includes('[Uhakiki wa Critic]'));
+  });
 });

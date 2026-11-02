@@ -569,3 +569,15 @@ Ushahidi wa ndani (sandbox):
 - `npm run test:integration` kwenye test branch `mission-003-test-20261030` (ep-dawn-feather, non-production): 26/26 pass, cleanup rows 0
 
 Wafuatiliaji: bei za live provider bado hazingiwi automatically (zinahitaji feed ya bei iliyothibitishwa), na roles/RLS bado ni blocker ya idhini ya wazi.
+
+## Checkpoint 2026-11-02T01:40Z - per-task budget cap inatekelezwa kwenye orchestrator
+
+Execution `exec_1793583128586_e86127` (attempt 5) imefunga hatua ndogo iliyobaki kwenye wavu wa awali: accounting ya per-task usage (`f44042c`) ilikuwa inapima tu, ila hakuna budget cap iliyotekelezwa popote.
+
+Mabadiliko kwenye `src/core/orchestrator/orchestrator.ts` na `src/core/types.ts`: `AgentTask.usage` (`TaskUsage`) imepata `budgetUsd` na `budgetExceeded`. `executeTask()` inapokea options mpya ya hiari `{ budgetUsd }` bila kuvunja callers za awali. Kutekelezwa kwa bajeti kunahitaji ledger (bila ledger hakuna kipimo halisi cha spend, hivyo hakuna kukata kwa kukisia). `spendSince()` inahesabu spend halisi ya attempts za task hiyo pekee (attempt zisizo na bei hazichangi, kanuni ile ile ya costUsd). Gharama kubwa ya task (reasoning) inapimwa kabla ya hatua ya hiari (critic pass); ikiwa bajeti imeshafikiwa, critic pass inarukwa kabisa (hakuna call ya ziada ya mtandao), matokeo yanaeleza kwa uwazi kwa nini, na `usage` inabeba ushahidi (`budgetUsd`, `budgetExceeded: true`). Task bado inakamilika kwa hitimisho la reasoning yenyewe; bajeti haibadilishi matokeo ya msingi, inakata tu matumizi ya ziada.
+
+Ushahidi wa unit suite (`src/core/core.test.ts`, tests 3 mpya D/E/F): bajeti ya 0.02 inayofikiwa na reasoning pekee inaruka critic (calls 1 badala ya 2) na usage inarekodi `budgetExceeded: true`; bajeti kubwa (0.1) inaacha critic ifanyike na `budgetExceeded` haipo; bajeti bila ledger haiutekelezwi kwa kukisia (critic inaendelea, hakuna usage ya kubuni). Subtests A/B/C zilizopo hazikubadilika.
+
+Matokeo halisi ya uthibitisho: `npm test` (config ya unit) - 71 tests, 69 passed, 0 failed, 2 skipped; `npm test` (config ya integration: RUN_NEON_INTEGRATION=true, NEON_BRANCH=mission-003-test-20261030, endpoint ep-dawn-feather, imehakikiwa si production) - 74 passed, 0 failed, 0 skipped; `npm run test:integration` - 26 passed, 0 failed kwenye test branch; `npm run lint` (`tsc --noEmit`) - clean; `npm run build` - ok; `npm run db:migration-check` - migrations 001-004 valid. Post-run probe: `ai_job_runs` 0, `hinga_executions` 0, `hinga_worker_leases` 0. Hakuna DDL, role, grant, RLS, production SQL, live model call wala merge iliyofanywa; push ni kwenye `mission-003-independent-work` pekee; `main` inabaki `84b87bbc`.
+
+Kilichobaki: human review ya PR #1 na roles/grants/RLS (zinasubiri idhini wazi ya mmiliki). Hatua za kiufundi za mission 003 zimekamilika kanda ya usalama na accounting.

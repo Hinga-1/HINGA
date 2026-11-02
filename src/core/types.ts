@@ -166,6 +166,14 @@ export interface TaskUsage {
   attemptCount: number;
   totalTokens: number;
   costUsd?: number;
+  /**
+   * Bajeti ya USD iliyopewa task hii (angalia AgentOrchestrator.executeTask).
+   * Ipo tu ikiwa caller aliipitisha NA ledger ya usage ipo (bila ledger hakuna
+   * kipimo cha spend, hivyo hakuna uthibitisho wa kubuni).
+   */
+  budgetUsd?: number;
+  /** true ikiwa spend ya task ilishafika bajeti kabla ya hatua ya hiari (critic pass). */
+  budgetExceeded?: boolean;
 }
 
 // ----------------------------------------------------
