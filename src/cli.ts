@@ -69,18 +69,20 @@ async function main() {
       );
       console.log(`  Pengo lililorekodiwa: [${gap.id}] "${gap.topic}"`);
 
-      // 2. Ingest structured lesson
-      console.log('\n2. Kuingiza Somo Lililothibitishwa (Lesson Ingestion)...');
+      // 2. Ingest candidate lesson; promotion is a separate explicit step.
+      console.log('\n2. Kuingiza Somo la Kuchunguzwa (Candidate Lesson)...');
       const lessonResult = await system.learning.ingestLesson({
         id: 'LESSON-HEX-001',
         topic: 'Usanifu wa Hexagonal katika Mifumo ya AI',
         summary: 'Hexagonal Architecture inatenganisha Core Domain na mifumo ya nje kupitia Interfaces.',
-        content: 'Katika AI, reasoning na identity hazitegemei direct LLM API wala direct database. Zote zinaingia kupitia Ports.',
+        content: 'Katika AI, reasoning na identity hazitegemei direct LLM API wala direct database. Zote zinaingia kupitia Ports. Hii huruhusu kubadilisha database au LLM bila kubadilisha logic ya msingi.',
         verificationQuestion: 'Ni nini faida ya Ports na Adapters?',
         expectedAnswer: 'Kuruhusu kubadilisha database au LLM bila kubadilisha logic ya msingi.',
       });
-      console.log(`  Somo limehifadhiwa kwenye Memory ID: ${lessonResult.memoryId}`);
-      console.log(`  Mapungufu yaliyotatuliwa: ${lessonResult.resolvedGaps}`);
+      console.log(`  Candidate status: ${lessonResult.status}`);
+      const approval = await system.learning.approveLesson('LESSON-HEX-001');
+      console.log(`  Somo limeidhinishwa kwenye Memory ID: ${approval.memoryId}`);
+      console.log(`  Mapungufu yaliyotatuliwa: ${approval.resolvedGaps}`);
 
       // 3. Run Benchmark Evaluation
       console.log('\n3. Kuendesha Mtihani wa Kiotomatiki (Evaluation Benchmark)...');

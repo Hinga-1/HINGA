@@ -8,6 +8,12 @@ import { AutomationEngine } from '../automation/scheduler.ts';
 export class ObservabilityEngine {
   private logs: AuditLog[] = [];
   private maxLogs: number = 200;
+  private degradedReasons: string[] = [];
+
+  markDegraded(reason: string): void {
+    if (!this.degradedReasons.includes(reason)) this.degradedReasons.push(reason);
+    this.warn('system', 'health_degraded', { reason });
+  }
 
   log(level: LogLevel, subsystem: string, action: string, details?: Record<string, unknown>, latencyMs?: number): void {
     const entry: AuditLog = {
@@ -54,7 +60,7 @@ export class ObservabilityEngine {
     const jobsCount = automation.getJobs().length;
 
     return {
-      overallStatus: 'healthy',
+      overallStatus: this.degradedReasons.length > 0 ? 'degraded' : 'healthy',
       timestamp: new Date().toISOString(),
       subsystems: {
         identity: { status: 'ok', version: id.version },

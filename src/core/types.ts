@@ -16,6 +16,12 @@ export interface ModelResponse {
   model: string;
   usage?: TokenUsage;
   finishReason?: string;
+  latencyMs?: number;
+  fallback?: {
+    used: boolean;
+    providerId?: string;
+    reason?: string;
+  };
   metadata?: Record<string, unknown>;
 }
 
@@ -25,6 +31,9 @@ export interface ModelRequest {
   tier?: ModelTier;
   temperature?: number;
   maxTokens?: number;
+  requestId?: string;
+  deadlineAt?: number;
+  signal?: AbortSignal;
 }
 
 export interface AiModelProvider {
@@ -83,6 +92,8 @@ export interface ReasoningResult {
 // ----------------------------------------------------
 export type MemoryType = 'working' | 'episodic' | 'semantic';
 
+export type MemoryVerificationStatus = 'unverified' | 'candidate' | 'verified' | 'rejected';
+
 export interface MemoryEntry {
   id: string;
   type: MemoryType;
@@ -92,6 +103,13 @@ export interface MemoryEntry {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  tenantId?: string;
+  sessionId?: string;
+  sourceUri?: string;
+  sourceHash?: string;
+  sourceCapturedAt?: string;
+  expiresAt?: string;
+  verificationStatus?: MemoryVerificationStatus;
   metadata?: Record<string, unknown>;
 }
 
@@ -100,14 +118,23 @@ export interface MemorySearchFilter {
   tags?: string[];
   query?: string;
   limit?: number;
+  tenantId?: string;
+  sessionId?: string;
+  includeExpired?: boolean;
+  verificationStatus?: MemoryVerificationStatus;
+}
+
+export interface MemoryScope {
+  tenantId?: string;
+  sessionId?: string;
 }
 
 export interface MemoryStore {
   store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry>;
-  retrieve(id: string): Promise<MemoryEntry | null>;
+  retrieve(id: string, scope?: MemoryScope): Promise<MemoryEntry | null>;
   search(filter: MemorySearchFilter): Promise<MemoryEntry[]>;
-  delete(id: string): Promise<boolean>;
-  clear(type?: MemoryType): Promise<void>;
+  delete(id: string, scope?: MemoryScope): Promise<boolean>;
+  clear(type?: MemoryType, scope?: MemoryScope): Promise<void>;
 }
 
 // ----------------------------------------------------
@@ -126,6 +153,27 @@ export interface AgentTask {
   error?: string;
   createdAt: string;
   completedAt?: string;
+  /** Attempt za provider zilizorekodiwa na ledger wakati wa task hii pekee. */
+  usage?: TaskUsage;
+}
+
+/**
+ * Muhtasari wa matumizi ya model kwa task moja, uliopimwa kutoka UsageLedger
+ * kuanzia wakati task ilipoanza. `costUsd` ipo tu ikiwa angalau attempt moja
+ * ina bei halisi; hakuna thamani ya kubuni.
+ */
+export interface TaskUsage {
+  attemptCount: number;
+  totalTokens: number;
+  costUsd?: number;
+  /**
+   * Bajeti ya USD iliyopewa task hii (angalia AgentOrchestrator.executeTask).
+   * Ipo tu ikiwa caller aliipitisha NA ledger ya usage ipo (bila ledger hakuna
+   * kipimo cha spend, hivyo hakuna uthibitisho wa kubuni).
+   */
+  budgetUsd?: number;
+  /** true ikiwa spend ya task ilishafika bajeti kabla ya hatua ya hiari (critic pass). */
+  budgetExceeded?: boolean;
 }
 
 // ----------------------------------------------------
@@ -155,6 +203,8 @@ export interface EvaluationBenchmark {
   title: string;
   testPrompt: string;
   evaluationCriteria: string[];
+  /** Each criterion is satisfied only when at least one approved phrase matches. */
+  criterionPhrases?: string[][];
   minScore: number;
 }
 
@@ -163,6 +213,16 @@ export interface EvaluationResult {
   score: number; // 0 to 100
   passed: boolean;
   observations: string[];
+  evaluatedAt: string;
+}
+
+export interface EvaluationSuiteResult {
+  suiteId: string;
+  suiteVersion: string;
+  benchmarkIds: string[];
+  results: EvaluationResult[];
+  passRate: number;
+  passed: boolean;
   evaluatedAt: string;
 }
 
@@ -201,7 +261,35 @@ export interface ScheduledJob {
   nextRun: string;
   enabled: boolean;
   maxRetries: number;
-  task: () => Promise<void>;
+  retryOnError: (error: unknown) => boolean;
+  task: (signal?: AbortSignal) => Promise<void>;
+}
+
+export type JobRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'timed_out';
+
+export interface JobRunRecord {
+  runId: string;
+  jobId: string;
+  idempotencyKey: string;
+  status: JobRunStatus;
+  attempt: number;
+  maxAttempts: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export interface JobRunStore {
+  findByIdempotencyKey(key: string): Promise<JobRunRecord | null>;
+  /** Inserts a new run only when its idempotency key is not already claimed. */
+  claim(record: JobRunRecord): Promise<boolean>;
+  /** Atomically transitions an eligible run into one executing attempt. */
+  beginAttempt(runId: string, attempt: number, startedAt: string): Promise<boolean>;
+  /** Atomically marks a run failed only while it is still running. */
+  failIfRunning(runId: string, completedAt: string, error: string): Promise<boolean>;
+  save(record: JobRunRecord): Promise<void>;
+  listRunning(): Promise<JobRunRecord[]>;
 }
 
 // ----------------------------------------------------

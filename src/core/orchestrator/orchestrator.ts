@@ -3,6 +3,8 @@ import { IdentityManager } from '../identity/identity-manager.ts';
 import { ReasoningEngine } from '../reasoning/engine.ts';
 import { MemoryManager } from '../memory/memory-manager.ts';
 import { SafetyGuardrails } from '../safety/guardrails.ts';
+import { TaskUsage } from '../types.ts';
+import { UsageLedger } from '../providers/usage.ts';
 
 export class AgentOrchestrator {
   private provider: AiModelProvider;
@@ -11,19 +13,60 @@ export class AgentOrchestrator {
   private memory: MemoryManager;
   private safety: SafetyGuardrails;
   private tasks: Map<string, AgentTask> = new Map();
+  private usageLedger: UsageLedger | null;
 
   constructor(
     provider: AiModelProvider,
     identity: IdentityManager,
     reasoning: ReasoningEngine,
     memory: MemoryManager,
-    safety: SafetyGuardrails
+    safety: SafetyGuardrails,
+    usageLedger?: UsageLedger
   ) {
     this.provider = provider;
     this.identity = identity;
     this.reasoning = reasoning;
     this.memory = memory;
     this.safety = safety;
+    this.usageLedger = usageLedger ?? null;
+  }
+
+  /**
+   * Hesabu za attempts zilizotokea wakati wa task hii pekee. Ledger ni append-only,
+   * hivyo kuanzia index iliyopita hadi mwisho ni delta halisi ya task. Hakuna
+   * kubuni: attempt zisizo na bei hazichangia `costUsd`, na bila ledger hakuna usage.
+   */
+  private collectUsage(
+    beforeIndex: number,
+    budget?: { budgetUsd: number; budgetExceeded: boolean }
+  ): TaskUsage | undefined {
+    if (!this.usageLedger) return undefined;
+    const attempts = this.usageLedger.getAttempts().slice(beforeIndex);
+    if (attempts.length === 0) return undefined;
+    const usage: TaskUsage = {
+      attemptCount: attempts.length,
+      totalTokens: attempts.reduce((total, attempt) => total + (attempt.usage?.totalTokens ?? 0), 0),
+    };
+    if (attempts.some((attempt) => attempt.estimatedCostUsd !== undefined)) {
+      usage.costUsd = Number(attempts.reduce((total, attempt) => total + (attempt.estimatedCostUsd ?? 0), 0).toFixed(8));
+    }
+    if (budget) {
+      usage.budgetUsd = budget.budgetUsd;
+      if (budget.budgetExceeded) usage.budgetExceeded = true;
+    }
+    return usage;
+  }
+
+  /**
+   * Spend halisi (USD) ya attempts tangu `beforeIndex`. Attempt zisizo na bei
+   * hazichangi: spend haijabuniwi. Inatumika tu kupima dhidi ya bajeti ya task.
+   */
+  private spendSince(beforeIndex: number): number {
+    if (!this.usageLedger) return 0;
+    return this.usageLedger
+      .getAttempts()
+      .slice(beforeIndex)
+      .reduce((total, attempt) => total + (attempt.estimatedCostUsd ?? 0), 0);
   }
 
   /**
@@ -46,7 +89,11 @@ export class AgentOrchestrator {
   /**
    * Executes a task through the orchestrated multi-agent reasoning flow.
    */
-  async executeTask(description: string, assignedRole?: AgentRole): Promise<AgentTask> {
+  async executeTask(
+    description: string,
+    assignedRole?: AgentRole,
+    options?: { budgetUsd?: number }
+  ): Promise<AgentTask> {
     const role = assignedRole || this.classifyRole(description);
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -77,13 +124,31 @@ export class AgentOrchestrator {
     };
     this.tasks.set(taskId, task);
 
+    // Delta ya attempts za task hii; lazima ionekane pia kwenye catch, kwa hivyo
+    // inatangaza kabla ya try.
+    let usageBefore = 0;
+    // Bajeti ya task (hiari). Kutekelezwa kunahitaji ledger: bila ledger hakuna
+    // kipimo halisi cha spend, hivyo hakuna kukata kwa kukisia. Vigezo viko
+    // nje ya try ili catch nayo isome context ile ile.
+    const budgetUsd = options?.budgetUsd;
+    const budgetMeasured = budgetUsd !== undefined && this.usageLedger !== null;
+    let budgetExceeded = false;
     try {
+      if (this.usageLedger) usageBefore = this.usageLedger.getAttempts().length;
+
       // 2. Perform step-by-step reasoning
       const reasoningResult = await this.reasoning.reason(description);
 
-      // 3. Critic Pass: If role wasn't already critic, perform verification
+      // 3. Critic Pass (ya hiari): inaanza tu kama bajeti ya task bado
+      // haijafikiwa. Spend huangaliwa tena baada ya reasoning, kwa sababu
+      // attempts za reasoning ndizo gharama kubwa ya task.
+      if (budgetMeasured) {
+        budgetExceeded = this.spendSince(usageBefore) >= budgetUsd!;
+      }
       let finalResult = reasoningResult.conclusion;
-      if (role !== 'critic') {
+      if (budgetExceeded) {
+        finalResult = `${finalResult}\n\n[Critic pass haikufanyika: bajeti ya $${budgetUsd} ya task hii imeshafikiwa.]`;
+      } else if (role !== 'critic') {
         const criticPrompt = `Kama Mhakiki Mkuu (Senior Critic), kagua hitimisho lifuatalo na uthibitishe kama ni salama na sahihi:
 "${finalResult}"
 Toa uthibitisho wa sentensi 1-2.`;
@@ -103,6 +168,10 @@ Toa uthibitisho wa sentensi 1-2.`;
       task.reasoning = reasoningResult;
       task.result = finalResult;
       task.completedAt = new Date().toISOString();
+      task.usage = this.collectUsage(
+        usageBefore,
+        budgetMeasured ? { budgetUsd: budgetUsd!, budgetExceeded } : undefined
+      );
 
       return task;
     } catch (err: unknown) {
@@ -110,6 +179,12 @@ Toa uthibitisho wa sentensi 1-2.`;
       task.status = 'failed';
       task.error = msg;
       task.completedAt = new Date().toISOString();
+      // Provider anaweza kuwa amerekodi attempt iliyoanguka kabla ya kosa; hiyo ni
+      // taarifa ya "nini kilichofeli", hivyo inafaa kuonekana kwenye task.
+      task.usage = this.collectUsage(
+        usageBefore,
+        budgetMeasured ? { budgetUsd: budgetUsd!, budgetExceeded } : undefined
+      );
       return task;
     }
   }
