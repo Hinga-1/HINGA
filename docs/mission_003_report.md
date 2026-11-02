@@ -596,3 +596,21 @@ Mabadiliko:
 Ushahidi: `npm test` - 76 tests, 74 passed, 0 failed, 2 skipped (live-DB stubs); `npm run lint` (`tsc --noEmit`) - clean; `npm run build` - ok; `npm run db:migration-check` - migrations 001-004 valid; `npm run test:integration` kwenye test branch `mission-003-test-20261030` (endpoint `ep-dawn-feather-b9v9sfi1`, imehakikiwa si production kwa kulinganisha hosts) - 26 passed, 0 failed; probe baada ya run: `ai_job_runs` 0, `hinga_executions` 0, `hinga_worker_leases` 0. Hakuna production SQL, DDL, role, grant, RLS, backup, restore wala live model call; push ni kwenye `mission-003-independent-work` pekee; `main` inabaki `84b87bbc`.
 
 Kilichobaki: human review ya PR #1, roles/grants/RLS (zinahitaji idhini wazi ya utumiaji wa production), na kusasisha bei kunakorudiwa kwa mikono (chanzo kimeshajaribiwa, mchakato wa refresh ni hatua ya baadaye).
+
+## Uthibitisho wa execution ya 2026-11-02T05:19Z — hakuna hatua salama mpya isiyozuiwa
+Katika execution hii nilikagua ratiba ya MISSION 003 na kuthibitisha kuwa schedule moja tu ipo, iko `active`, ina interval ya sekunde 21,600 (kila saa 6), ina `runAsNewTask=true`, imeunganishwa na GitHub na Neon, na ina expire `2026-12-31T23:59:59Z`. PR #1 iko `OPEN`, `MERGEABLE`, kutoka `mission-003-independent-work` kwenda `main`; GitHub CI ya mwisho iliyopo ilikuwa `SUCCESS`. Working tree ya branch hii ilikuwa clean kabla ya report-only checkpoint.
+
+Report na code vilikaguliwa dhidi ya priority zilizobaki. Hatua za kiufundi salama za MISSION 003 tayari zimefungwa kwenye branch hii: execution ledger/leases, scope-aware memory adapters, integration guards, stable model routing, cancellable provider deadlines, per-task usage/budget cap na committed price feed. Kilichobaki ni (a) human review/sign-off ya PR #1, (b) roles/grants/RLS na runtime least privilege ambazo playbook inazizuia bila idhini ya wazi, na (c) price refresh ya baadaye kutoka chanzo kilichothibitishwa. Hakuna hatua ya code iliyo salama na yenye thamani zaidi ambayo inaweza kufanywa bila kurudia kazi iliyokamilika au kufanya material architecture/policy change; hivyo execution hii haikubuni implementation mpya.
+
+### Verification ya execution hii
+- `npm ci` — **passed** kutoka lockfile; haikubadilisha lockfile. npm iliripoti vulnerability moja ya kiwango cha chini na deprecation ya `node-domexception`.
+- `npm test` — **74 passed, 0 failed, 2 skipped**; skips ni Neon integration kwa sababu `DATABASE_URL` haikuwekwa. Hakuna live model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; warning ya Vite kuhusu `configLoader: native` na `__dirname` haikuzuia build.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid.
+- `git diff --check` — **passed**.
+- Neon MCP `list_branches` — **passed**: `mission-003-test-20261030` iko `ready` kama `br-twilight-paper-b9hyxb1y`, si default na si production.
+- Neon MCP `describe_branch` — **passed** read-only kwenye test branch; ilithibitisha `schema_migrations`, `ai_job_runs`, `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, memory/learning/evaluation tables na indexes husika. Hakuna SQL write iliyofanywa.
+
+### Blocker na uamuzi wa execution
+Sikufanya production operation, migration apply, roles, grants, RLS, backup, restore, merge ya `main`, fine-tuning, au live/paid model call. Kwa sababu blocker kuu zinahitaji human review au idhini ya wazi, schedule haizimwi bado: mission haijatangazwa kuwa imekamilika bila PR review na uamuzi wa policy kuhusu least privilege/RLS. Execution inayofuata haipaswi kurudia implementation hii; inapaswa kusubiri mabadiliko ya approval/review au priority mpya salama.
