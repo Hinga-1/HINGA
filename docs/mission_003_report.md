@@ -648,3 +648,25 @@ Uthibitisho halisi wa workspace hii:
 - Neon MCP `list_branches` — **passed** read-only; safe test branch iko `ready`, production branch haikuguswa. Kwa kuwa checkpoint hii haina code au schema change, hakuna repository-level Neon integration test iliyoanzishwa; prior safe-branch integration evidence bado iko kwenye report.
 
 Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation au distributed exactly-once hayafanywi. Hatua inayofuata inahitaji human review/approval, policy approval ya roles/grants/RLS, au priority mpya salama; execution hii haitarudia implementation iliyokamilika.
+
+
+## Uthibitisho wa execution ya 2026-11-03T05:19Z — report-only checkpoint; hakuna safe implementation mpya
+
+Katika execution hii nilithibitisha PR #1 iko **OPEN** na **CLEAN**, inalenga `main`, na inatoka `mission-003-independent-work`; CI `verify` mbili za mwisho zilizopo GitHub zina **SUCCESS**. Working tree ya branch ilikuwa clean kabla ya checkpoint, na `HEAD` ya local ililingana na `origin/mission-003-independent-work` kwenye `2417f5f87cf3357eb5a3e6c4c6c54aa8b026ba79`.
+
+Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoint**. Sikuongeza code kwa sababu vipaumbele salama vya kiufundi vilivyobaki tayari vimefungwa kwenye branch hii: execution ledger/leases, scope-aware memory, integration guards, stable model routing, cancellable provider deadlines, usage/budget accounting, na committed price feed. Vilivyosalia ni human review/sign-off ya PR #1, roles/grants/RLS na runtime least privilege ambazo playbook inazuia bila idhini ya wazi, na price refresh ya baadaye kutoka chanzo kilichothibitishwa. Kurudia implementation iliyokamilika au kubuni policy/architecture mpya bila idhini kungekuwa kinyume cha playbook.
+
+### Uthibitisho halisi wa workspace hii
+
+- `npm ci --ignore-scripts` — **passed**; lockfile ilitumika. Npm iliripoti vulnerability moja ya kiwango cha chini na deprecation ya `node-domexception`; hakuna lockfile change.
+- `npm test` — **74 passed, 0 failed, 2 skipped** (tests 76); skips ni Neon integration kwa sababu `DATABASE_URL` haikuwekwa. Hakuna live/paid model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; warning ya Vite kuhusu `configLoader: native` na `__dirname` haikuzuia build.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid.
+- `npm run test:integration` — **0 passed, 0 failed, 5 skipped**; guard ilikataa bila `RUN_NEON_INTEGRATION=true` na `DATABASE_URL`, hivyo hakuna connection attempt wala write iliyofanywa.
+- `git diff --check` — **passed**.
+- Neon MCP `describe_project` — **passed** read-only kwa project `falling-moon-75342440`.
+- Neon MCP `list_branches` — **passed** read-only; `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) iko `ready`, si default, na ni tofauti na production `br-shy-voice-b958sxiw`.
+- Neon MCP `get_database_tables` — **passed** read-only kwenye safe test branch; ilithibitisha `schema_migrations`, `ai_job_runs`, `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, memory/learning/evaluation tables na `neon_items` zipo.
+
+Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Neon production branch haikuguswa. Mission **haijakamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once au backup/restore hayafanywi. Hatua inayofuata inahitaji human review/approval, policy approval ya roles/grants/RLS, au priority mpya salama; execution hii haitarudia implementation iliyokamilika.
