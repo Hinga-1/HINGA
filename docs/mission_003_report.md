@@ -727,3 +727,22 @@ Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoin
 - Neon MCP `get_database_tables` — **passed** read-only kwenye `br-twilight-paper-b9hyxb1y`; ilithibitisha `schema_migrations`, `ai_job_runs`, `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, memory/learning/evaluation tables na `neon_items` zipo.
 
 Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once au backup/restore hayafanywi. Hatua inayofuata inahitaji human review/approval, policy approval ya roles/grants/RLS, au priority mpya salama; execution hii haitarudia implementation iliyokamilika.
+
+## Uthibitisho wa execution ya 2026-11-04T23:19Z — verification/report checkpoint; hakuna safe implementation mpya
+Katika execution hii nilikagua PR #1, branch `mission-003-independent-work`, report ya MISSION 003 na vipaumbele vilivyosalia. PR iko **OPEN**, inalenga `main`, na inatoka `mission-003-independent-work`; working tree ilikuwa clean kabla ya checkpoint. Safe Neon branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilithibitishwa kuwa `ready`, si default; production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoint**. Sikuongeza code, schema, roles, grants au RLS kwa sababu safe technical priorities zilizoorodheshwa kwenye report tayari zimefungwa kwenye branch hii: execution ledger/leases, scope-aware memory, guarded integration, stable model routing, cancellable provider deadlines, usage/budget accounting na committed price feed. Vilivyosalia ni human review/sign-off ya PR #1, policy approval ya roles/grants/RLS na runtime least privilege, pamoja na price refresh ya baadaye kutoka chanzo kilichothibitishwa. Kurudia implementation iliyokamilika au kubuni architecture/policy mpya bila idhini kungekuwa kinyume cha playbook.
+
+### Uthibitisho halisi wa workspace hii
+- `npm ci --ignore-scripts` — **passed**; lockfile haikubadilishwa. Npm iliripoti vulnerability moja ya kiwango cha chini na deprecation ya `node-domexception`.
+- `npm test` — **74 passed, 0 failed, 2 skipped** (tests 76); skips ni Neon unit integration stubs kwa sababu `DATABASE_URL` haikuwekwa. Hakuna live/paid model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native` na `__dirname`.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid.
+- `npm run test:integration` — **0 passed, 0 failed, 5 skipped**; guard ilikataa bila `RUN_NEON_INTEGRATION=true` na `DATABASE_URL`, hivyo hakuna connection attempt wala write iliyofanywa. Sikuunda wala kuchapisha credential.
+- `git diff --check` — **passed** kabla ya report append.
+- Neon MCP `describe_project` — **passed** read-only kwa project `falling-moon-75342440`.
+- Neon MCP `list_branches` — **passed** read-only: safe branch `mission-003-test-20261030` iko `ready`, si default, na production ni branch tofauti `production` (`br-shy-voice-b958sxiw`).
+- Neon MCP `describe_branch` — **passed** read-only kwenye `br-twilight-paper-b9hyxb1y`; ilithibitisha `schema_migrations`, `ai_job_runs`, `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, memory/learning/evaluation tables na indexes husika zipo.
+
+Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once au backup/restore hayafanywi. Blocker iliyo wazi kwa direct safe-branch integration ni test-branch connection configuration; blocker za uamuzi ni human PR review/sign-off na policy approval ya roles/grants/RLS. Execution hii haitarudia implementation iliyokamilika.
