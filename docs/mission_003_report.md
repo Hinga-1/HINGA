@@ -785,3 +785,24 @@ Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoin
 Neon repository-level integration haikuendeshwa kwa connection halisi katika execution hii kwa sababu workspace haina `DATABASE_URL` na hakuna approved test-branch credential configuration. Sikuunda, sikuomba, wala sikubashiri credential. Hii ni blocker ya connection configuration ya safe branch pekee, si ushahidi wa production. Human PR review/sign-off na policy approval ya roles/grants/RLS bado vinahitajika. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once, au backup/restore hayafanywi.
 
 Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Checkpoint hii inapaswa kuzuia kurudia implementation salama iliyokamilika hadi kuwe na approval/review au priority mpya salama.
+
+
+## Uthibitisho wa execution ya 2026-11-05T23:19Z — verification/report checkpoint; hakuna safe implementation mpya
+
+Katika execution hii nilikagua PR #1, branch ya kazi na Neon kabla ya kuchagua hatua. PR #1 iko **OPEN**, inalenga `main`, inatoka `mission-003-independent-work`, na ilikuwa **CLEAN/MERGEABLE**; GitHub CI `verify` iliyothibitishwa ilikuwa na **SUCCESS**. Local `HEAD` ni `3e9747b` na working tree ilikuwa clean kabla ya report append. Neon project `falling-moon-75342440` ilithibitisha safe branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) iko `ready`, si default; production `br-shy-voice-b958sxiw` haikuguswa.
+
+Hatua moja ndogo yenye thamani iliyotekelezwa ni **kusasisha checkpoint ya verification na blocker** baada ya kuandaa dependencies kutoka lockfile. Sikuongeza code, schema, roles, grants au RLS: report na implementation ya sasa vinaonyesha safe technical priorities za MISSION 003 tayari zimefungwa, na vilivyosalia vinahitaji human PR review/sign-off, policy approval ya roles/grants/RLS, au credential configuration iliyoidhinishwa ya safe branch. Kurudia implementation iliyokamilika au kubuni architecture/policy mpya bila idhini kungekuwa kinyume cha playbook.
+
+### Uthibitisho halisi wa workspace hii
+
+- `npm ci --ignore-scripts` — **passed** kutoka lockfile; package manifests na lockfile hazikubadilika. Npm iliripoti vulnerability moja ya kiwango cha chini na deprecation ya `node-domexception`.
+- `npm test` — **74 passed, 0 failed, 2 skipped** (tests 76); skips ni Neon integration tests kwa sababu `DATABASE_URL` haikuwekwa. Hakuna live/paid model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native` na `__dirname`.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid.
+- `npm run test:integration` — **exit 0, 0 passed, 0 failed, 5 skipped**; guard ilikataa kuanza bila `RUN_NEON_INTEGRATION=true` na `DATABASE_URL`, hivyo hakuna connection attempt wala database write iliyofanywa.
+- `git diff --check` — **passed** kabla ya report append.
+
+### Blocker na mipaka ya usalama
+
+Safe-branch Neon integration haikuendeshwa kwa connection halisi katika execution hii kwa sababu workspace haina `DATABASE_URL` na hakuna approved test-branch credential configuration. Sikuunda, sikuomba, wala sikubashiri credential. Hii ni blocker ya connection configuration ya safe branch pekee, si ushahidi wa production. Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once au backup/restore hayafanywi.
