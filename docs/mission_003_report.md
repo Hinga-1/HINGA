@@ -765,3 +765,23 @@ Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoin
 Neon integration ya safe branch haikuweza kuthibitishwa katika execution hii: Neon MCP ilirudisha **OAuth authentication failed / transport TLS handshake timeout**, na workspace haina `DATABASE_URL`. Sikuunda, sikuomba, wala sikubashiri credential; hivyo sikukimbiza `RUN_NEON_INTEGRATION=true` na sikuunganisha database kwa njia nyingine. Hii ni blocker ya connection configuration ya safe branch pekee, si ushahidi wa production. Production branch `br-shy-voice-b958sxiw` haikuguswa; safe branch inayoruhusiwa bado ni `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`).
 
 Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once au backup/restore hayafanywi. Hatua inayofuata inahitaji human review/approval, policy approval ya roles/grants/RLS, au connection configuration iliyoidhinishwa ya safe branch; execution hii haitarudia implementation iliyokamilika.
+
+## Uthibitisho wa execution ya 2026-11-05T17:20Z — verification/report checkpoint; hakuna safe implementation mpya
+Katika execution hii nilikagua PR #1 na branch ya kazi kabla ya kuchagua hatua. PR iko **OPEN**, inalenga `main`, inatoka `mission-003-independent-work`, na status yake ni **CLEAN**; checks mbili za mwisho za GitHub CI `verify` zina **SUCCESS** kwenye head `3b0dc36ca5588b197926fb7bd1c65516dd6474a7`. Working tree ilikuwa clean kabla ya checkpoint, na local `HEAD` ililingana na `origin/mission-003-independent-work`. Sikuunganisha `main` wala kubadilisha Neon.
+
+Hatua moja ndogo yenye thamani iliyotekelezwa ni **verification/report checkpoint**. Sikuongeza code, schema, roles, grants au RLS kwa sababu safe technical priorities zilizo kwenye report tayari zimefungwa kwenye branch hii. Vilivyosalia ni human review/sign-off ya PR #1, policy approval ya roles/grants/RLS na runtime least privilege, pamoja na price refresh ya baadaye kutoka chanzo kilichothibitishwa. Kurudia implementation iliyokamilika au kubuni architecture/policy mpya bila idhini kungekuwa kinyume cha playbook.
+
+### Uthibitisho halisi wa workspace hii
+- `npm ci --ignore-scripts` — **passed**; dependencies ziliwekwa kutoka lockfile, `package.json` na `package-lock.json` hazikubadilika. Npm iliripoti vulnerability moja ya kiwango cha chini na deprecation ya `node-domexception`.
+- `npm test` — **74 passed, 0 failed, 2 skipped** (tests 76); skips ni Neon integration stubs kwa sababu `DATABASE_URL` haikuwekwa. Hakuna live/paid model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning isiyozuia build kuhusu `configLoader: native` na `__dirname`.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid.
+- `npm run test:integration` — **exit 0, 0 passed, 0 failed, 5 skipped**; guard ilikataa kuanza bila `RUN_NEON_INTEGRATION=true` na `DATABASE_URL`, hivyo hakuna connection attempt wala database write iliyofanywa.
+- `git diff --check` — **passed**.
+- Neon MCP read-only `get_branch` — **passed** kwa safe branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`), hali `ready`, si default; parent ni production branch `br-shy-voice-b958sxiw`, ambayo haikuguswa.
+
+### Blocker na mipaka ya usalama
+Neon repository-level integration haikuendeshwa kwa connection halisi katika execution hii kwa sababu workspace haina `DATABASE_URL` na hakuna approved test-branch credential configuration. Sikuunda, sikuomba, wala sikubashiri credential. Hii ni blocker ya connection configuration ya safe branch pekee, si ushahidi wa production. Human PR review/sign-off na policy approval ya roles/grants/RLS bado vinahitajika. Mission **haijatangazwa kuwa imekamilika**, scheduler haizimwi, na madai ya production tenant isolation, factual verification, distributed exactly-once, au backup/restore hayafanywi.
+
+Hakuna production SQL, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge ya `main` iliyofanywa. Checkpoint hii inapaswa kuzuia kurudia implementation salama iliyokamilika hadi kuwe na approval/review au priority mpya salama.
