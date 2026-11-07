@@ -2,6 +2,89 @@ import { AiModelProvider, ReasoningResult, ReasoningStep } from '../types.ts';
 import { MemoryManager } from '../memory/memory-manager.ts';
 import { IdentityManager } from '../identity/identity-manager.ts';
 
+const MAX_REASONING_STEPS = 12;
+
+export class ModelOutputValidationError extends Error {
+  constructor(message: string) {
+    super(`Model reasoning output haikubaliki: ${message}`);
+    this.name = 'ModelOutputValidationError';
+  }
+}
+
+function isFiniteConfidence(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function requireText(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ModelOutputValidationError(`${field} lazima iwe maandishi yasiyo tupu`);
+  }
+  return value.trim();
+}
+
+function parseReasoningResponse(content: string, problem: string): ReasoningResult {
+  let parsed: unknown;
+  let cleaned = content.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  }
+
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new ModelOutputValidationError('jibu si JSON halali');
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new ModelOutputValidationError('jibu lazima liwe object');
+  }
+
+  const value = parsed as Record<string, unknown>;
+  const problemSummary = requireText(value.problemSummary, 'problemSummary');
+  const conclusion = requireText(value.conclusion, 'conclusion');
+  if (!isFiniteConfidence(value.confidence)) {
+    throw new ModelOutputValidationError('confidence lazima iwe namba kati ya 0 na 1');
+  }
+  if (!Array.isArray(value.steps) || value.steps.length === 0 || value.steps.length > MAX_REASONING_STEPS) {
+    throw new ModelOutputValidationError(`steps lazima ziwe kati ya 1 na ${MAX_REASONING_STEPS}`);
+  }
+
+  const steps: ReasoningStep[] = value.steps.map((rawStep, index) => {
+    if (!rawStep || typeof rawStep !== 'object') {
+      throw new ModelOutputValidationError(`step ${index + 1} si object`);
+    }
+    const step = rawStep as Record<string, unknown>;
+    if (!Number.isInteger(step.stepNumber) || (step.stepNumber as number) < 1) {
+      throw new ModelOutputValidationError(`step ${index + 1} ina stepNumber isiyo sahihi`);
+    }
+    if (!isFiniteConfidence(step.confidence)) {
+      throw new ModelOutputValidationError(`step ${index + 1} ina confidence isiyo sahihi`);
+    }
+    const evidence = step.evidence === undefined ? undefined : requireText(step.evidence, `step ${index + 1}.evidence`);
+    return {
+      stepNumber: step.stepNumber as number,
+      thought: requireText(step.thought, `step ${index + 1}.thought`),
+      action: requireText(step.action, `step ${index + 1}.action`),
+      evidence,
+      confidence: step.confidence,
+    };
+  });
+
+  const gapsIdentified = value.gapsIdentified === undefined ? [] : value.gapsIdentified;
+  if (!Array.isArray(gapsIdentified) || !gapsIdentified.every((gap) => typeof gap === 'string')) {
+    throw new ModelOutputValidationError('gapsIdentified lazima iwe orodha ya maandishi');
+  }
+
+  return {
+    problemSummary,
+    steps,
+    conclusion,
+    confidence: value.confidence,
+    gapsIdentified,
+    executionTimeMs: 0,
+  };
+}
+
 export class ReasoningEngine {
   private provider: AiModelProvider;
   private memory: MemoryManager;
@@ -14,97 +97,36 @@ export class ReasoningEngine {
   }
 
   /**
-   * Decomposes a complex problem and produces verified, step-by-step reasoning.
+   * Decomposes a complex problem and accepts only bounded, validated model output.
    */
   async reason(problem: string): Promise<ReasoningResult> {
+    const normalizedProblem = requireText(problem, 'problem');
     const startTime = Date.now();
 
-    // 1. Retrieve relevant prior knowledge and context
-    const relevantKnowledge = await this.memory.findRelevantKnowledge(problem, 3);
+    const relevantKnowledge = await this.memory.findRelevantKnowledge(normalizedProblem, 3);
     const knowledgeContext = relevantKnowledge.map((k) => `[Maarifa: ${k.key}]: ${k.content}`).join('\n');
-
-    // 2. Build structured reasoning prompt
     const systemPrompt = this.identity.buildSystemPrompt('Mchambuzi wa Kiufundi na Mfikiri wa Hatua kwa Hatua');
-
-    const prompt = `TATIZO LA KUCHAMBUA:
-${problem}
-
-MAARIFA YALIYOHIFADHIWA YANAYOHUSU TATIZO:
-${knowledgeContext || 'Hakuna maarifa maalum yaliyohifadhiwa awali kuhusu mada hii.'}
-
-MAELEKEZO YA KITAALAMU:
-Chambua tatizo hili kwa kina na utoe jibu kwa muundo wa JSON ufuatao (bila markdown ziada):
-{
-  "problemSummary": "Muhtasari sahihi wa tatizo kwa sentensi 1-2",
-  "steps": [
-    {
-      "stepNumber": 1,
-      "thought": "Uchambuzi wa kwanza...",
-      "action": "Kuangalia vigezo...",
-      "evidence": "Ushahidi uliotumika...",
-      "confidence": 0.95
-    }
-  ],
-  "conclusion": "Hitimisho thabiti na maamuzi ya kiufundi",
-  "confidence": 0.92,
-  "gapsIdentified": ["Mambo yasiyojulikana au yanayohitaji utafiti zaidi (ikiwa yapo)"]
-}`;
+    const prompt = `TATIZO LA KUCHAMBUA:\n${normalizedProblem}\n\nMAARIFA YALIYOHIFADHIWA YANAYOHUSU TATIZO:\n${knowledgeContext || 'Hakuna maarifa maalum yaliyohifadhiwa awali kuhusu mada hii.'}\n\nMAELEKEZO YA KITAALAMU:\nChambua tatizo hili kwa kina na utoe JSON halali tu. Usifichue chain-of-thought ya ndani; toa muhtasari wa ushahidi na hatua salama. Tumia schema hii:\n${JSON.stringify({
+      problemSummary: 'Muhtasari wa tatizo kwa sentensi 1-2',
+      steps: [{ stepNumber: 1, thought: 'Muhtasari wa hoja', action: 'Hatua inayopendekezwa', evidence: 'Ushahidi au null', confidence: 0.8 }],
+      conclusion: 'Hitimisho',
+      confidence: 0.8,
+      gapsIdentified: [],
+    })}`;
 
     const response = await this.provider.generateText({
       systemPrompt,
       prompt,
       tier: 'balanced',
       temperature: 0.1,
+      maxTokens: 1500,
     });
 
     const executionTimeMs = Date.now() - startTime;
+    const result = parseReasoningResponse(response.content, normalizedProblem);
+    result.executionTimeMs = executionTimeMs;
 
-    // 3. Parse and validate the reasoning output
-    let parsed: any;
-    try {
-      // Strip markdown code fences if model included them
-      let cleaned = response.content.trim();
-      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '');
-      else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/, '').replace(/```$/, '');
-      parsed = JSON.parse(cleaned.trim());
-    } catch {
-      // Fallback deterministic structure if response was unstructured
-      parsed = {
-        problemSummary: `Uchambuzi wa tatizo: ${problem}`,
-        steps: [
-          {
-            stepNumber: 1,
-            thought: response.content,
-            action: 'Uchambuzi wa moja kwa moja',
-            confidence: 0.85,
-          },
-        ],
-        conclusion: response.content,
-        confidence: 0.85,
-        gapsIdentified: [],
-      };
-    }
-
-    const steps: ReasoningStep[] = (parsed.steps || []).map((s: any, idx: number) => ({
-      stepNumber: s.stepNumber || idx + 1,
-      thought: s.thought || '',
-      action: s.action || '',
-      evidence: s.evidence,
-      confidence: typeof s.confidence === 'number' ? s.confidence : 0.8,
-    }));
-
-    const result: ReasoningResult = {
-      problemSummary: parsed.problemSummary || problem,
-      steps,
-      conclusion: parsed.conclusion || 'Uchambuzi umekamilika.',
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.85,
-      gapsIdentified: parsed.gapsIdentified || [],
-      executionTimeMs,
-    };
-
-    // 4. Save episode to memory for future reflection
-    await this.memory.recordEpisode(problem, result.conclusion, ['reasoning_task']);
-
+    await this.memory.recordEpisode(normalizedProblem, result.conclusion, ['reasoning_task']);
     return result;
   }
 }

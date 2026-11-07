@@ -1,4 +1,4 @@
-import { MemoryEntry, MemorySearchFilter, MemoryStore, MemoryType } from '../types.ts';
+import { MemoryEntry, MemorySearchFilter, MemoryScope, MemoryStore, MemoryType } from '../types.ts';
 
 /**
  * Fast, deterministic in-memory store for unit tests, offline sandbox & fallback.
@@ -7,6 +7,11 @@ export class InMemoryStore implements MemoryStore {
   private entries: Map<string, MemoryEntry> = new Map();
 
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<MemoryEntry> {
+    if (!['working', 'episodic', 'semantic'].includes(entry.type)) throw new Error('Memory type isiyo sahihi');
+    if (!Number.isInteger(entry.importance) || entry.importance < 1 || entry.importance > 10) {
+      throw new Error('Memory importance lazima iwe integer kati ya 1 na 10');
+    }
+    if (!entry.content.trim() || entry.content.length > 100_000) throw new Error('Memory content ina urefu usioruhusiwa');
     const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
     const newEntry: MemoryEntry = {
@@ -19,12 +24,31 @@ export class InMemoryStore implements MemoryStore {
     return newEntry;
   }
 
-  async retrieve(id: string): Promise<MemoryEntry | null> {
-    return this.entries.get(id) || null;
+  async retrieve(id: string, scope?: MemoryScope): Promise<MemoryEntry | null> {
+    const entry = this.entries.get(id);
+    if (!entry || !matchesScope(entry, scope)) return null;
+    return entry;
   }
 
   async search(filter: MemorySearchFilter): Promise<MemoryEntry[]> {
     let list = Array.from(this.entries.values());
+
+    if (filter.tenantId !== undefined) {
+      list = list.filter((e) => e.tenantId === filter.tenantId);
+    }
+
+    if (filter.sessionId !== undefined) {
+      list = list.filter((e) => e.sessionId === filter.sessionId);
+    }
+
+    if (filter.verificationStatus !== undefined) {
+      list = list.filter((e) => (e.verificationStatus ?? 'unverified') === filter.verificationStatus);
+    }
+
+    if (!filter.includeExpired) {
+      const now = Date.now();
+      list = list.filter((e) => !e.expiresAt || Date.parse(e.expiresAt) > now);
+    }
 
     if (filter.type) {
       list = list.filter((e) => e.type === filter.type);
@@ -39,7 +63,7 @@ export class InMemoryStore implements MemoryStore {
       list = list.filter((e) => e.key.toLowerCase().includes(q) || e.content.toLowerCase().includes(q));
     }
 
-    list.sort((a, b) => b.importance - a.importance);
+    list.sort((a, b) => b.importance - a.importance || b.createdAt.localeCompare(a.createdAt));
 
     if (filter.limit && filter.limit > 0) {
       list = list.slice(0, filter.limit);
@@ -48,17 +72,20 @@ export class InMemoryStore implements MemoryStore {
     return list;
   }
 
-  async delete(id: string): Promise<boolean> {
-    return this.entries.delete(id);
+  async delete(id: string, scope?: MemoryScope): Promise<boolean> {
+    const entry = this.entries.get(id);
+    return Boolean(entry && matchesScope(entry, scope) && this.entries.delete(id));
   }
 
-  async clear(type?: MemoryType): Promise<void> {
+  async clear(type?: MemoryType, scope?: MemoryScope): Promise<void> {
     if (!type) {
-      this.entries.clear();
+      for (const [id, entry] of this.entries.entries()) {
+        if (matchesScope(entry, scope)) this.entries.delete(id);
+      }
       return;
     }
     for (const [id, entry] of this.entries.entries()) {
-      if (entry.type === type) {
+      if (entry.type === type && matchesScope(entry, scope)) {
         this.entries.delete(id);
       }
     }
@@ -67,4 +94,8 @@ export class InMemoryStore implements MemoryStore {
   get totalCount(): number {
     return this.entries.size;
   }
+}
+function matchesScope(entry: MemoryEntry, scope?: MemoryScope): boolean {
+  return (scope?.tenantId === undefined || entry.tenantId === scope.tenantId)
+    && (scope?.sessionId === undefined || entry.sessionId === scope.sessionId);
 }

@@ -37,23 +37,13 @@ export interface DbHealthResult {
   error?: string;
 }
 
-/**
- * Initializes the database schema using the direct (unpooled) connection,
- * per Neon best practices for schema migrations.
- */
+/** Verifies that versioned migrations have created the application table. DDL belongs in db:migrate. */
 export async function initDatabaseSchema(): Promise<void> {
   if (!directUrl) {
-    throw new Error('DATABASE_URL_UNPOOLED or DATABASE_URL is required to initialize schema');
+    throw new Error('DATABASE_URL_UNPOOLED or DATABASE_URL is required to verify schema');
   }
-
-  await sqlDirect`
-    CREATE TABLE IF NOT EXISTS neon_items (
-      id SERIAL PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-  `;
+  const rows = await sqlDirect`SELECT to_regclass('public.neon_items') AS table_name;`;
+  if (!rows[0]?.table_name) throw new Error('Database migrations have not created public.neon_items');
 }
 
 /**

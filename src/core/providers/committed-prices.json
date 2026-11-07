@@ -1,0 +1,22 @@
+{
+  "version": "2026-11-02T02:03Z",
+  "source": "https://openrouter.ai/api/v1/models - bei za orodha za Google AI Studio, zilizothibitishwa 2026-11-02T02:03Z",
+  "snapshots": [
+    {
+      "version": "2026-11-02T02:03Z",
+      "modelId": "gemini-2.5-flash",
+      "source": "openrouter:google/gemini-2.5-flash (https://openrouter.ai/api/v1/models)",
+      "effectiveAt": "2026-11-02T02:03:00.000Z",
+      "inputUsdPerMillionTokens": 0.3,
+      "outputUsdPerMillionTokens": 2.5
+    },
+    {
+      "version": "2026-11-02T02:03Z",
+      "modelId": "gemini-2.5-pro",
+      "source": "openrouter:google/gemini-2.5-pro (https://openrouter.ai/api/v1/models)",
+      "effectiveAt": "2026-11-02T02:03:00.000Z",
+      "inputUsdPerMillionTokens": 1.25,
+      "outputUsdPerMillionTokens": 10
+    }
+  ]
+}
