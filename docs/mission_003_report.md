@@ -1102,3 +1102,25 @@ No new application implementation was selected because the safe technical MISSIO
 ### Unresolved risks and safety boundaries
 
 Safe-branch repository integration remains blocked by the absence of an approved `DATABASE_URL`/connection configuration. No credential was created, requested, guessed, exposed, or written to the repository. Human PR review/sign-off and explicit policy approval for roles/grants/RLS and runtime least privilege remain unresolved. This checkpoint does not claim production tenant isolation, distributed exactly-once side effects, factual verification, backup/restore completion, or mission completion. No production branch operation, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, or merge to `main` was performed. The mission is not declared complete and the schedule remains enabled; future executions should wait for a blocker change, approval, or a new safe priority rather than repeat this verification or completed implementation.
+
+
+## Verification checkpoint — 2026-11-11T17:19:32Z — no new safe implementation beyond recorded blockers
+
+Nilikagua PR #1, branch `mission-003-independent-work`, source/tests/report, na Neon test branch iliyoidhinishwa kabla ya kuchagua hatua. PR #1 bado iko **OPEN**, inalenga `main`, ni **MERGEABLE**, na GitHub CI `verify` ya mwisho ina **SUCCESS**. Working tree ilikuwa clean na head ya branch ilikuwa `2a39fee7d9a2b60920bd0bdac2b87127ca1d0600`. Neon branch `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`) ilithibitishwa kuwa `ready`, non-default, na schema yake ina tables/indexes za migrations 001–004 pamoja na execution ledger/lease tables. Production branch `br-shy-voice-b958sxiw` haikuguswa.
+
+Hakuna safe application implementation mpya iliyochaguliwa kwa sababu priorities za kiufundi zilizo salama tayari ziko kwenye branch, huku hatua zilizobaki zikihitaji ama idhini ya wazi ya roles/grants/RLS, au connection configuration iliyoidhinishwa kwa repository-level Neon integration. Hatua moja ndogo yenye thamani ya execution hii ilikuwa fresh verification/report checkpoint; hakuna migration, schema change, role, grant, RLS policy, backup, restore, model call, architecture/policy change, secret exposure, au merge iliyofanywa.
+
+### Fresh command and service evidence
+
+- `npm ci --ignore-scripts` — **passed**; packages 208 ziliwekwa kutoka lockfile. Npm iliripoti existing `node-domexception` deprecation na low-severity audit finding; manifests na lockfile hazikubadilishwa.
+- `npm test` — **74 passed, 0 failed, 2 skipped** (tests 76). Skips mbili zinahitaji `DATABASE_URL`; hakuna live au paid model call iliyofanywa.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite ilitoa warning ileile isiyozuia build kuhusu `configLoader: 'native'` na `__dirname`.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, `004` ni valid na ziko kwa mpangilio.
+- `npm run test:integration` — command ilitoka na **0 passed, 0 failed, 5 skipped**; guard ilithibitisha `DATABASE_URL` haipo na `RUN_NEON_INTEGRATION=true` haikuopt-in. Hakuna repository integration connection au database write iliyojaribiwa.
+- `git diff --check` — itafanywa kabla ya checkpoint commit.
+- Safe Neon read-only inspection — **passed** kwa `br-twilight-paper-b9hyxb1y` pekee; branch iko ready na ina expected migrated tables, execution ledger, leases, memory, learning, evaluation, automation-state, na migration-ledger tables.
+
+### Unresolved risks and safety boundaries
+
+Repository-level safe-branch integration inabaki blocked na kutokuwepo kwa approved `DATABASE_URL`/connection configuration; hakuna credential iliyoundwa, kukisiwa, kuhamishwa, au kuchapishwa. Human PR review/sign-off na explicit policy approval kwa roles/grants/RLS na runtime least privilege bado hazijapatikana. Checkpoint hii haidai production tenant isolation, distributed exactly-once side effects, factual verification, backup/restore completion, au mission completion. Hakuna production operation, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, au merge to `main` iliyofanywa. Schedule inaendelea kuwa enabled; execution zijazo zisirudie implementation hii au verification hii isipokuwa blocker ibadilike au priority salama mpya ipatikane.
