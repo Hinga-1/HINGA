@@ -1169,3 +1169,21 @@ No new application implementation was selected because the safe technical MISSIO
 
 ### Unresolved risks and safety boundaries
 Repository-level safe-branch integration remains blocked by the absence of an approved `DATABASE_URL`/connection configuration. Human PR review/sign-off and explicit policy approval for roles/grants/RLS and runtime least privilege remain unresolved. This checkpoint does not claim production tenant isolation, distributed exactly-once side effects, factual verification, backup/restore completion, or mission completion. No production branch operation, migration apply, DDL, role, grant, RLS, backup, restore, fine-tuning, paid/live model call, secret exposure, or merge to `main` was performed. The mission is not declared complete and the schedule remains enabled; future executions should wait for a blocker change, approval, or a new safe priority rather than repeat this verification or completed implementation.
+
+## Verification checkpoint — 2026-11-12T17:19:39Z — no safe implementation available
+I inspected PR #1, branch `mission-003-independent-work`, the current report/source/tests, and the configured Neon branches. PR #1 remains **OPEN**, targets `main`, is **MERGEABLE**, and the worktree was clean at the start of this execution. The only permitted Neon target, `mission-003-test-20261030` (`br-twilight-paper-b9hyxb1y`), is **ready**, non-default, and contains the expected MISSION 003 tables and indexes, including `hinga_executions`, `hinga_worker_leases`, `hinga_automation_state`, `schema_migrations`, `ai_job_runs`, memory, learning, and evaluation tables. Production branch `br-shy-voice-b958sxiw` was not queried or modified.
+
+The next listed implementation priority requiring action is runtime/migration roles and RLS/least-privilege enforcement. The playbook explicitly prohibits roles, grants, and RLS without explicit user approval, so I did not implement or test that policy-sensitive change. The other safe code priorities recorded in this report are already present; inventing a new architecture or repeating completed implementation would not be valuable. This execution therefore records status and fresh verification only. No migration apply, schema write, role, grant, RLS policy, backup, restore, model call, secret exposure, or merge to `main` was performed.
+
+### Fresh command and service evidence
+- `npm ci --ignore-scripts` — **passed**; 208 packages installed from the committed lockfile. Existing deprecation and one low-severity audit finding were reported; no tracked dependency changes occurred.
+- `npm test` — **passed: 74 passed, 0 failed, 2 skipped**. The two skips require `DATABASE_URL`; no live or paid model call occurred.
+- `npm run lint` — **passed** (`tsc --noEmit`).
+- `npm run build` — **passed**; Vite emitted the existing non-blocking `configLoader: 'native'` / `__dirname` warning.
+- `npm run db:migration-check` — **passed**; migration files `001`, `002`, `003`, and `004` are valid and ordered.
+- `npm run test:integration` — **exited 0 with 0 passed, 0 failed, 5 skipped**. The explicit guard reported that `DATABASE_URL` is not set and live Neon integration was not opted in; no repository integration connection or database write was attempted.
+- `git diff --check` — **passed** before this report append.
+- Neon MCP read-only schema inspection — **passed** on `br-twilight-paper-b9hyxb1y` / `neondb`; the branch was ready and the expected migrated tables/indexes were present.
+
+### Unresolved risks and safety boundaries
+Safe-branch repository integration remains blocked by the absence of an approved `DATABASE_URL`/connection configuration. Roles, grants, RLS, runtime least privilege, and human PR review/sign-off remain unresolved. This checkpoint does not claim production tenant isolation, distributed exactly-once side effects, factual verification, backup/restore completion, or mission completion. The mission remains incomplete and the schedule remains enabled; no safe implementation step beyond this status/evidence checkpoint was available under the current policy.
