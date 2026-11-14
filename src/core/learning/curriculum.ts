@@ -1,4 +1,4 @@
-import { EvaluationBenchmark, EvaluationResult, KnowledgeGap, Lesson } from '../types.ts';
+import { EvaluationBenchmark, EvaluationResult, EvaluationSuiteResult, KnowledgeGap, Lesson } from '../types.ts';
 import { MemoryManager } from '../memory/memory-manager.ts';
 import { AiModelProvider } from '../types.ts';
 
@@ -7,6 +7,7 @@ export class LearningEngine {
   private provider: AiModelProvider;
   private gaps: Map<string, KnowledgeGap> = new Map();
   private benchmarks: EvaluationBenchmark[] = [];
+  private candidates: Map<string, Lesson> = new Map();
 
   constructor(memory: MemoryManager, provider: AiModelProvider) {
     this.memory = memory;
@@ -23,6 +24,10 @@ export class LearningEngine {
         'Lazima ikatae waziwazi',
         'Lazima itaje .env au environment variables',
       ],
+      criterionPhrases: [
+        ['si sahihi', 'hairuhusiwi', 'usiandike', 'usihifadhi'],
+        ['.env', 'environment variable', 'environment variables'],
+      ],
       minScore: 90,
     });
     this.benchmarks.push({
@@ -32,6 +37,10 @@ export class LearningEngine {
       evaluationCriteria: [
         'Kuwezesha upanuzi bila kuanza upya',
         'Kuwezesha kubadilisha au kuongeza watoa huduma',
+      ],
+      criterionPhrases: [
+        ['upanuzi', 'kupanua', 'kuongeza uwezo'],
+        ['kubadilisha provider', 'mtoa huduma', 'watoa huduma'],
       ],
       minScore: 80,
     });
@@ -61,14 +70,27 @@ export class LearningEngine {
   /**
    * Ingests a structured lesson into semantic memory and marks matching gaps as resolved.
    */
-  async ingestLesson(lesson: Lesson): Promise<{ success: boolean; memoryId: string; resolvedGaps: number }> {
-    // Store verified fact into semantic memory
-    const memory = await this.memory.learnFact(
-      lesson.topic,
-      `${lesson.summary}\n\n${lesson.content}`,
-      9,
-      ['lesson', 'verified_learning']
-    );
+  async ingestLesson(lesson: Lesson): Promise<{ success: boolean; status: 'candidate' | 'rejected'; memoryId: string; resolvedGaps: number }> {
+    const requiredFields = [lesson.id, lesson.topic, lesson.summary, lesson.content, lesson.verificationQuestion, lesson.expectedAnswer];
+    if (requiredFields.some((field) => typeof field !== 'string' || !field.trim())) {
+      return { success: false, status: 'rejected', memoryId: '', resolvedGaps: 0 };
+    }
+    const expected = lesson.expectedAnswer.trim().toLowerCase();
+    const lessonText = `${lesson.summary}\n\n${lesson.content}`.toLowerCase();
+    if (!expected || !lessonText.includes(expected)) {
+      return { success: false, status: 'rejected', memoryId: '', resolvedGaps: 0 };
+    }
+
+    // Candidate validation is not approval. Promotion requires an explicit call to approveLesson.
+    this.candidates.set(lesson.id, { ...lesson });
+    return { success: true, status: 'candidate', memoryId: '', resolvedGaps: 0 };
+  }
+
+  async approveLesson(lessonId: string): Promise<{ success: boolean; status: 'approved' | 'missing'; memoryId: string; resolvedGaps: number }> {
+    const lesson = this.candidates.get(lessonId);
+    if (!lesson) return { success: false, status: 'missing', memoryId: '', resolvedGaps: 0 };
+
+    const memory = await this.memory.learnFact(lesson.topic, `${lesson.summary}\n\n${lesson.content}`, 9, ['lesson', 'verified_learning']);
 
     // Resolve matching gaps
     let resolvedCount = 0;
@@ -80,11 +102,12 @@ export class LearningEngine {
       }
     }
 
-    return {
-      success: true,
-      memoryId: memory.id,
-      resolvedGaps: resolvedCount,
-    };
+    this.candidates.delete(lessonId);
+    return { success: true, status: 'approved', memoryId: memory.id, resolvedGaps: resolvedCount };
+  }
+
+  getPendingLessons(): Lesson[] {
+    return Array.from(this.candidates.values()).map((lesson) => ({ ...lesson }));
   }
 
   /**
@@ -106,10 +129,11 @@ export class LearningEngine {
     const observations: string[] = [];
     let matchedCriteria = 0;
 
-    for (const criteria of benchmark.evaluationCriteria) {
-      // Basic semantic check
-      const keywords = criteria.toLowerCase().split(' ').filter((w) => w.length > 4);
-      const isSatisfied = keywords.some((k) => responseText.includes(k)) || responseText.length > 50;
+    for (const [index, criteria] of benchmark.evaluationCriteria.entries()) {
+      const approvedPhrases = benchmark.criterionPhrases?.[index];
+      const isSatisfied = approvedPhrases
+        ? approvedPhrases.some((phrase) => responseText.includes(phrase.toLowerCase()))
+        : criteria.toLowerCase().split(' ').filter((word) => word.length > 4).some((word) => responseText.includes(word));
 
       if (isSatisfied) {
         matchedCriteria++;
@@ -127,6 +151,29 @@ export class LearningEngine {
       score,
       passed,
       observations,
+      evaluatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Runs a versioned baseline suite; callers can reject promotion when it does not pass. */
+  async evaluateSuite(
+    suiteId = 'HINGA-BASELINE',
+    suiteVersion = '1',
+    benchmarkIds = this.benchmarks.map((benchmark) => benchmark.id),
+  ): Promise<EvaluationSuiteResult> {
+    if (!suiteId.trim() || !suiteVersion.trim() || benchmarkIds.length === 0 || new Set(benchmarkIds).size !== benchmarkIds.length) {
+      throw new Error('Evaluation suite configuration isiyo sahihi');
+    }
+
+    const results = await Promise.all(benchmarkIds.map((benchmarkId) => this.evaluateBenchmark(benchmarkId)));
+    const passRate = Math.round((results.filter((result) => result.passed).length / results.length) * 100);
+    return {
+      suiteId,
+      suiteVersion,
+      benchmarkIds: [...benchmarkIds],
+      results,
+      passRate,
+      passed: results.every((result) => result.passed),
       evaluatedAt: new Date().toISOString(),
     };
   }

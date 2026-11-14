@@ -1,4 +1,4 @@
-import { MemoryEntry, MemoryStore, MemoryType } from '../types.ts';
+import { MemoryEntry, MemoryScope, MemoryStore, MemoryType } from '../types.ts';
 
 export class MemoryManager {
   private store: MemoryStore;
@@ -8,59 +8,77 @@ export class MemoryManager {
   }
 
   // --- Working Memory ---
-  async setWorkingContext(key: string, content: string): Promise<MemoryEntry> {
+  async setWorkingContext(key: string, content: string, scope?: MemoryScope): Promise<MemoryEntry> {
     return this.store.store({
       type: 'working',
       key,
       content,
       importance: 5,
       tags: ['working_memory'],
+      ...scope,
     });
   }
 
-  async getWorkingContext(): Promise<MemoryEntry[]> {
-    return this.store.search({ type: 'working', limit: 20 });
+  async getWorkingContext(scope?: MemoryScope): Promise<MemoryEntry[]> {
+    return this.store.search({ type: 'working', limit: 20, ...scope });
   }
 
-  async clearWorkingContext(): Promise<void> {
-    return this.store.clear('working');
+  async clearWorkingContext(scope?: MemoryScope): Promise<void> {
+    return this.store.clear('working', scope);
   }
 
   // --- Episodic Memory ---
-  async recordEpisode(action: string, result: string, tags: string[] = []): Promise<MemoryEntry> {
+  async recordEpisode(action: string, result: string, tags: string[] = [], scope?: MemoryScope): Promise<MemoryEntry> {
     return this.store.store({
       type: 'episodic',
       key: `episode_${Date.now()}`,
       content: JSON.stringify({ action, result }),
       importance: 7,
       tags: ['episode', ...tags],
+      ...scope,
     });
   }
 
-  async getRecentEpisodes(limit: number = 10): Promise<MemoryEntry[]> {
-    return this.store.search({ type: 'episodic', limit });
+  async getRecentEpisodes(limit: number = 10, scope?: MemoryScope): Promise<MemoryEntry[]> {
+    return this.store.search({ type: 'episodic', limit, ...scope });
   }
 
   // --- Semantic Memory ---
-  async learnFact(topic: string, fact: string, importance: number = 8, tags: string[] = []): Promise<MemoryEntry> {
+  async learnFact(topic: string, fact: string, importance: number = 8, tags: string[] = [], scope?: MemoryScope): Promise<MemoryEntry> {
     return this.store.store({
       type: 'semantic',
       key: topic,
       content: fact,
       importance,
       tags: ['semantic_fact', ...tags],
+      ...scope,
     });
   }
 
-  async findRelevantKnowledge(query: string, limit: number = 5): Promise<MemoryEntry[]> {
-    return this.store.search({ type: 'semantic', query, limit });
+  async findRelevantKnowledge(query: string, limit: number = 5, scope?: MemoryScope): Promise<MemoryEntry[]> {
+    return this.store.search({ type: 'semantic', query, limit, ...scope });
   }
 
-  async getStoreStats(): Promise<{ type: string; total: number }> {
-    const all = await this.store.search({ limit: 1000 });
+  async getStoreStats(scope?: MemoryScope): Promise<{ type: string; total: number }> {
+    const all = await this.store.search({ limit: 1000, ...scope });
     return {
       type: (this.store as any).constructor?.name || 'UnknownStore',
       total: all.length,
     };
+  }
+
+  /** Reads one memory entry while preserving the caller's tenant/session scope. */
+  async retrieveMemory(id: string, scope?: MemoryScope): Promise<MemoryEntry | null> {
+    return this.store.retrieve(id, scope);
+  }
+
+  /** Deletes one memory entry only when it belongs to the requested scope. */
+  async deleteMemory(id: string, scope?: MemoryScope): Promise<boolean> {
+    return this.store.delete(id, scope);
+  }
+
+  /** Clears memories of an optional type only inside the requested scope. */
+  async clearMemory(type?: MemoryType, scope?: MemoryScope): Promise<void> {
+    return this.store.clear(type, scope);
   }
 }
